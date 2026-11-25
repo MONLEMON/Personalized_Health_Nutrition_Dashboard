@@ -11,23 +11,32 @@ import { calculateAge } from '../services/tdee.service';
 export const SEED_USER_ID = '11111111-1111-4111-8111-111111111111';
 export const SEED_GOAL_ID = '22222222-2222-4222-8222-222222222222';
 
+const DEFAULT_APP_TIMEZONE = process.env.APP_TIMEZONE?.trim() || 'Asia/Bangkok';
+
+const appDateFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: DEFAULT_APP_TIMEZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
 /**
- * Formats a Date into local YYYY-MM-DD without UTC timezone drift.
+ * Formats a Date into YYYY-MM-DD in the configured app timezone (default Asia/Bangkok, UTC+7).
  */
 export function getLocalDateString(date: Date = new Date()): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return appDateFormatter.format(date);
 }
 
 /**
- * Shifts a YYYY-MM-DD date string by deltaDays in local calendar time.
+ * Shifts a YYYY-MM-DD date string by deltaDays in calendar time (timezone-independent).
  */
 export function shiftDateString(dateStr: string, deltaDays: number): string {
   const [year, month, day] = dateStr.split('-').map(Number);
-  const shifted = new Date(year, month - 1, day + deltaDays);
-  return getLocalDateString(shifted);
+  const shifted = new Date(Date.UTC(year, month - 1, day + deltaDays));
+  const y = shifted.getUTCFullYear();
+  const m = String(shifted.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(shifted.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 function roundTo(value: number, decimals: number): number {
