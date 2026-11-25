@@ -1,0 +1,27 @@
+{
+  "name": "@health-dash/api",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "build": "bun build src/index.ts --outdir dist --target bun",
+    "build:vercel": "bun build src/vercel.ts --outdir dist/vercel --target node",
+    "typecheck": "tsc --noEmit",
+    "db:seed": "bun src/db/seed.ts",
+    "db:push": "drizzle-kit push"
+  },
+  "dependencies": {
+    "@google/genai": "^1.0.0",
+    "@health-dash/shared": "workspace:*",
+    "drizzle-orm": "^0.40.0",
+    "hono": "^4.7.4",
+    "postgres": "^3.4.5",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "drizzle-kit": "^0.30.5",
+    "typescript": "^5.8.2"
+  }
+}

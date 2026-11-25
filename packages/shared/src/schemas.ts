@@ -1,0 +1,176 @@
+import { z } from 'zod';
+
+const isoDateRegex = /^\d{4}-\d{2}-\d{2}$/;
+
+export const createNutritionLogSchema = z.object({
+  itemName: z.string().trim().min(1, 'Item name is required').max(120),
+  mealType: z.enum(['breakfast', 'lunch', 'dinner', 'snack']),
+  calories: z.coerce.number().min(0).max(10000),
+  proteinG: z.coerce.number().min(0).max(1000),
+  carbsG: z.coerce.number().min(0).max(1500),
+  fatG: z.coerce.number().min(0).max(1000),
+  loggedDate: z.string().regex(isoDateRegex, 'Expected YYYY-MM-DD').optional(),
+});
+
+export const createWorkoutLogSchema = z.object({
+  activityName: z.string().trim().min(1, 'Activity name is required').max(120),
+  category: z.enum(['strength', 'cardio', 'hiit', 'mobility', 'sport']),
+  durationMin: z.coerce.number().int().min(1).max(1440),
+  activeCalories: z.coerce.number().min(0).max(10000),
+  intensity: z.enum(['low', 'moderate', 'high']),
+  loggedDate: z.string().regex(isoDateRegex, 'Expected YYYY-MM-DD').optional(),
+});
+
+export const toggleSupplementSchema = z.object({
+  supplementKey: z.string().trim().min(1, 'Supplement key is required').max(64),
+  loggedDate: z.string().regex(isoDateRegex, 'Expected YYYY-MM-DD').optional(),
+});
+
+export const createBodyMetricSchema = z.object({
+  weightKg: z.coerce.number().positive().min(20).max(400),
+  bodyFatPct: z.coerce.number().min(2).max(75).nullable().optional(),
+  skeletalMuscleMassKg: z.coerce.number().min(5).max(150).nullable().optional(),
+  notes: z.string().trim().max(300).nullable().optional(),
+  recordedDate: z.string().regex(isoDateRegex, 'Expected YYYY-MM-DD').optional(),
+});
+
+export const trendsQuerySchema = z.object({
+  days: z.coerce.number().int().min(7).max(90).default(30),
+});
+
+export const ParsedFoodItemSchema = z.object({
+  food_name: z.string().trim().min(1).max(160),
+  portion_desc: z.string().trim().min(1).max(160),
+  calories: z.coerce.number().min(0).max(10000),
+  protein_g: z.coerce.number().min(0).max(1000),
+  carbs_g: z.coerce.number().min(0).max(1500),
+  fat_g: z.coerce.number().min(0).max(1000),
+  confidence: z.enum(['HIGH', 'MEDIUM', 'LOW']),
+});
+
+export const ParseNutritionResponseSchema = z.object({
+  items: z.array(ParsedFoodItemSchema),
+  suggested_meal_type: z.enum(['breakfast', 'lunch', 'dinner', 'snack']),
+});
+
+export const BatchNutritionLogItemSchema = z.object({
+  itemName: z.string().trim().min(1, 'Item name is required').max(160),
+  portionDesc: z.string().trim().max(160).optional(),
+  mealType: z.enum(['breakfast', 'lunch', 'dinner', 'snack']),
+  calories: z.coerce.number().min(0).max(10000),
+  proteinG: z.coerce.number().min(0).max(1000),
+  carbsG: z.coerce.number().min(0).max(1500),
+  fatG: z.coerce.number().min(0).max(1000),
+  loggedDate: z.string().regex(isoDateRegex, 'Expected YYYY-MM-DD').optional(),
+});
+
+export const CreateBatchNutritionLogsSchema = z.object({
+  source: z.enum(['MANUAL', 'AI_TEXT', 'AI_IMAGE']).default('AI_TEXT'),
+  items: z
+    .array(BatchNutritionLogItemSchema)
+    .min(1, 'At least one food item is required')
+    .max(30),
+});
+
+function emptyToUndefined(val: unknown): unknown {
+  if (val === undefined || val === null) {
+    return undefined;
+  }
+  if (typeof val === 'string') {
+    const trimmed = val.trim();
+    if (
+      trimmed === '' ||
+      trimmed.toLowerCase() === 'null' ||
+      trimmed.toLowerCase() === 'undefined'
+    ) {
+      return undefined;
+    }
+    return trimmed;
+  }
+  return val;
+}
+
+function normalizeBodyFatPct(val: number): number {
+  if (val > 0 && val <= 1) {
+    return Math.round(val * 1000) / 10;
+  }
+  return Math.round(val * 10) / 10;
+}
+
+export const AppleHealthWebhookPayloadSchema = z.object({
+  recorded_date: z.preprocess(
+    emptyToUndefined,
+    z.string().regex(isoDateRegex, 'Expected YYYY-MM-DD').optional(),
+  ),
+  weight_kg: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().min(20).max(400).optional(),
+  ),
+  body_fat_pct: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().min(0).max(75).transform(normalizeBodyFatPct).optional(),
+  ),
+  skeletal_muscle_kg: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().min(5).max(150).optional(),
+  ),
+  resting_hr: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().min(25).max(220).optional(),
+  ),
+  sleep_hours: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().min(0).max(24).optional(),
+  ),
+  active_calories: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().min(0).max(10000).optional(),
+  ),
+});
+
+export const SyncStatusSchema = z.object({
+  last_synced_at: z.string().nullable(),
+  synced_fields: z.array(z.string()),
+  status: z.enum(['SUCCESS', 'NEVER']),
+});
+
+export const OnboardingProfileSchema = z.object({
+  name: z.string().trim().min(1).max(100).optional(),
+  gender: z.enum(['male', 'female', 'other']),
+  birth_date: z.string().regex(isoDateRegex, 'Expected YYYY-MM-DD'),
+  height_cm: z.coerce.number().min(80).max(260),
+  weight_kg: z.coerce.number().min(20).max(400),
+  body_fat_pct: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().min(2).max(75).nullable().optional(),
+  ),
+  skeletal_muscle_kg: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().min(5).max(150).nullable().optional(),
+  ),
+  baseline_activity_multiplier: z.coerce.number().min(1.1).max(2.2).default(1.35),
+  goal_type: z.enum(['CUT', 'MAINTAIN', 'BULK']),
+  calorie_adjustment: z.coerce.number().int().min(-1500).max(1500),
+  protein_per_kg: z.coerce.number().min(0.8).max(3.5).default(2.0),
+  fat_ratio: z.coerce.number().min(0.15).max(0.5).default(0.25),
+});
+
+export const WebhookKeyResponseSchema = z.object({
+  api_key: z.string().min(1),
+  masked_key: z.string().min(1),
+  created_at: z.string(),
+});
+
+export type CreateNutritionLogInput = z.infer<typeof createNutritionLogSchema>;
+export type CreateWorkoutLogInput = z.infer<typeof createWorkoutLogSchema>;
+export type ToggleSupplementInput = z.infer<typeof toggleSupplementSchema>;
+export type CreateBodyMetricInput = z.infer<typeof createBodyMetricSchema>;
+export type TrendsQueryInput = z.infer<typeof trendsQuerySchema>;
+export type ParsedFoodItem = z.infer<typeof ParsedFoodItemSchema>;
+export type ParseNutritionResponse = z.infer<typeof ParseNutritionResponseSchema>;
+export type BatchNutritionLogItemInput = z.infer<typeof BatchNutritionLogItemSchema>;
+export type CreateBatchNutritionLogsInput = z.infer<typeof CreateBatchNutritionLogsSchema>;
+export type AppleHealthWebhookPayload = z.infer<typeof AppleHealthWebhookPayloadSchema>;
+export type SyncStatusDTO = z.infer<typeof SyncStatusSchema>;
+export type OnboardingProfileInput = z.infer<typeof OnboardingProfileSchema>;
+export type WebhookKeyResponse = z.infer<typeof WebhookKeyResponseSchema>;

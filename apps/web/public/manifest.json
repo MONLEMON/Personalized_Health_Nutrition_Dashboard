@@ -1,0 +1,18 @@
+{
+  "name": "VitalPulse — Health & Nutrition Dashboard",
+  "short_name": "VitalPulse",
+  "description": "Personalized Health, Dynamic TDEE & Body Recomposition Dashboard",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0A0C10",
+  "theme_color": "#0A0C10",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

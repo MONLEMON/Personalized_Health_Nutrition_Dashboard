@@ -1,0 +1,20 @@
+{
+  "name": "personalized-health-nutrition-dashboard",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:api": "bun run --cwd apps/api dev",
+    "dev:web": "bun run --cwd apps/web dev",
+    "build": "bun run --cwd apps/web build",
+    "build:api": "bun run --cwd apps/api build",
+    "build:web": "bun run --cwd apps/web build",
+    "typecheck": "bun run --cwd packages/shared typecheck && bun run --cwd apps/api typecheck && bun run --cwd apps/web typecheck",
+    "test": "bun test apps/api",
+    "db:seed": "bun run --cwd apps/api db:seed",
+    "db:push": "bun run --cwd apps/api db:push"
+  }
+}
