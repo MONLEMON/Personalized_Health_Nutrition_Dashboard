@@ -989,16 +989,17 @@ export class PostgresHealthRepository implements HealthRepository {
     profile: UserProfileDTO;
     goal: UserGoalDTO;
   }> {
-    const profileRow = await this.requireProfileRow(userId);
+    const [profileRow, [goalRow]] = await Promise.all([
+      this.findProfileRow(userId),
+      this.db
+        .select()
+        .from(userGoals)
+        .where(and(eq(userGoals.userId, userId), eq(userGoals.isActive, true)))
+        .orderBy(desc(userGoals.createdAt))
+        .limit(1),
+    ]);
 
-    const [goalRow] = await this.db
-      .select()
-      .from(userGoals)
-      .where(and(eq(userGoals.userId, userId), eq(userGoals.isActive, true)))
-      .orderBy(desc(userGoals.createdAt))
-      .limit(1);
-
-    if (!goalRow) {
+    if (!profileRow || !goalRow) {
       throw new HTTPException(404, {
         message: 'User profile not found. Complete onboarding first.',
       });
@@ -1011,7 +1012,16 @@ export class PostgresHealthRepository implements HealthRepository {
   }
 
   async getMe(userId: string, email?: string | null): Promise<MeResponseDTO> {
-    const profileRow = await this.findProfileRow(userId);
+    const [profileRow, [goalRow]] = await Promise.all([
+      this.findProfileRow(userId),
+      this.db
+        .select()
+        .from(userGoals)
+        .where(and(eq(userGoals.userId, userId), eq(userGoals.isActive, true)))
+        .orderBy(desc(userGoals.createdAt))
+        .limit(1),
+    ]);
+
     if (!profileRow) {
       return {
         userId,
@@ -1026,13 +1036,6 @@ export class PostgresHealthRepository implements HealthRepository {
         },
       };
     }
-
-    const [goalRow] = await this.db
-      .select()
-      .from(userGoals)
-      .where(and(eq(userGoals.userId, userId), eq(userGoals.isActive, true)))
-      .orderBy(desc(userGoals.createdAt))
-      .limit(1);
 
     const webhookKey = buildWebhookKeyStatus(
       profileRow.webhookKeyPrefix,
@@ -1177,14 +1180,29 @@ export class PostgresHealthRepository implements HealthRepository {
 
   async getTodayData(userId: string, date?: string): Promise<DashboardTodayResponse> {
     const targetDate = date ?? getLocalDateString();
-    const { profile, goal } = await this.getProfileAndGoal(userId);
 
-    const eligibleMetrics = await this.db
-      .select()
-      .from(bodyMetrics)
-      .where(and(eq(bodyMetrics.userId, userId), lte(bodyMetrics.recordedDate, targetDate)))
-      .orderBy(desc(bodyMetrics.recordedDate), desc(bodyMetrics.createdAt))
-      .limit(1);
+    const [{ profile, goal }, eligibleMetrics, workoutRows, nutritionRows] =
+      await Promise.all([
+        this.getProfileAndGoal(userId),
+        this.db
+          .select()
+          .from(bodyMetrics)
+          .where(and(eq(bodyMetrics.userId, userId), lte(bodyMetrics.recordedDate, targetDate)))
+          .orderBy(desc(bodyMetrics.recordedDate), desc(bodyMetrics.createdAt))
+          .limit(1),
+        this.db
+          .select()
+          .from(workoutLogs)
+          .where(and(eq(workoutLogs.userId, userId), eq(workoutLogs.loggedDate, targetDate)))
+          .orderBy(asc(workoutLogs.loggedAt)),
+        this.db
+          .select()
+          .from(nutritionLogs)
+          .where(
+            and(eq(nutritionLogs.userId, userId), eq(nutritionLogs.loggedDate, targetDate)),
+          )
+          .orderBy(asc(nutritionLogs.loggedAt)),
+      ]);
 
     let metricRow = eligibleMetrics[0];
     if (!metricRow) {
@@ -1204,23 +1222,7 @@ export class PostgresHealthRepository implements HealthRepository {
     }
 
     const latestMetric = toBodyMetricDTO(metricRow);
-
-    const workoutRows = await this.db
-      .select()
-      .from(workoutLogs)
-      .where(and(eq(workoutLogs.userId, userId), eq(workoutLogs.loggedDate, targetDate)))
-      .orderBy(asc(workoutLogs.loggedAt));
-
     const workouts: WorkoutLogDTO[] = workoutRows.map(toWorkoutLogDTO);
-
-    const nutritionRows = await this.db
-      .select()
-      .from(nutritionLogs)
-      .where(
-        and(eq(nutritionLogs.userId, userId), eq(nutritionLogs.loggedDate, targetDate)),
-      )
-      .orderBy(asc(nutritionLogs.loggedAt));
-
     const nutritionForDate: NutritionLogDTO[] = nutritionRows.map(toNutritionLogDTO);
 
     return buildDashboardTodayResponse({

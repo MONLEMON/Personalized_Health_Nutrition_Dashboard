@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { lazy, Suspense, useEffect, useState, type FormEvent } from 'react';
 import { createBodyMetricSchema, type GoalType } from '@health-dash/shared';
 import {
   Activity,
@@ -25,7 +25,12 @@ import {
   type MobileTab,
   type QuickLogTab,
 } from './components';
-import { BodyRecompChart } from './components/BodyRecompChart';
+const BodyRecompChart = lazy(() =>
+  import('./components/BodyRecompChart').then((mod) => ({
+    default: mod.BodyRecompChart,
+  })),
+);
+import type { TrendTimeframeDays } from './components/BodyRecompChart';
 import { useAuth } from './contexts/AuthContext';
 import { useDashboard } from './hooks/useDashboard';
 
@@ -510,13 +515,19 @@ export function App() {
               mobileTab === 'trends' ? 'block' : 'hidden md:block'
             }`}
           >
-            <BodyRecompChart
-              trends={trends}
-              days={trendDays}
-              onDaysChange={setTrendDays}
-              loading={loading}
-              onLogMetricClick={() => setWeighInOpen(true)}
-            />
+            <Suspense
+              fallback={
+                <div className="h-[380px] animate-pulse rounded-3xl border border-white/5 bg-[#141720]" />
+              }
+            >
+              <BodyRecompChart
+                trends={trends}
+                days={trendDays}
+                onDaysChange={setTrendDays}
+                loading={loading}
+                onLogMetricClick={() => setWeighInOpen(true)}
+              />
+            </Suspense>
           </div>
 
           <div

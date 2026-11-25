@@ -168,11 +168,38 @@ export function verifyHs256Jwt(
   return extractVerifiedUser(sub, payload);
 }
 
+const SUPABASE_AUTH_CACHE_TTL_MS = 60_000;
+const SUPABASE_AUTH_CACHE_MAX_ENTRIES = 500;
+const supabaseTokenCache = new Map<
+  string,
+  { user: VerifiedTokenUser; expiresAt: number }
+>();
+
+function getTokenExpMs(token: string): number | null {
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+  const payload = decodeBase64UrlJson(parts[1]);
+  if (typeof payload?.exp === 'number' && Number.isFinite(payload.exp)) {
+    return payload.exp * 1000;
+  }
+  return null;
+}
+
 async function verifyWithSupabaseApi(
   token: string,
   supabaseUrl: string,
   supabaseAnonKey: string,
 ): Promise<VerifiedTokenUser | null> {
+  const now = Date.now();
+  const cacheKey = crypto.createHash('sha256').update(token).digest('hex');
+  const cached = supabaseTokenCache.get(cacheKey);
+  if (cached && cached.expiresAt > now) {
+    return cached.user;
+  }
+  if (cached) {
+    supabaseTokenCache.delete(cacheKey);
+  }
+
   const baseUrl = supabaseUrl.replace(/\/+$/, '');
   try {
     const response = await fetch(`${baseUrl}/auth/v1/user`, {
@@ -196,7 +223,24 @@ async function verifyWithSupabaseApi(
       return null;
     }
 
-    return extractVerifiedUser(userId, data);
+    const user = extractVerifiedUser(userId, data);
+    const tokenExpMs = getTokenExpMs(token);
+    const expiresAt =
+      tokenExpMs !== null
+        ? Math.min(now + SUPABASE_AUTH_CACHE_TTL_MS, tokenExpMs)
+        : now + SUPABASE_AUTH_CACHE_TTL_MS;
+
+    if (expiresAt > now) {
+      if (supabaseTokenCache.size >= SUPABASE_AUTH_CACHE_MAX_ENTRIES) {
+        const oldestKey = supabaseTokenCache.keys().next().value;
+        if (oldestKey) {
+          supabaseTokenCache.delete(oldestKey);
+        }
+      }
+      supabaseTokenCache.set(cacheKey, { user, expiresAt });
+    }
+
+    return user;
   } catch {
     return null;
   }
