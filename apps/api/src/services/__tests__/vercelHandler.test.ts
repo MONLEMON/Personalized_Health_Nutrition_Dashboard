@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
-import { GET, OPTIONS } from '../../../../../api/index';
+import { GET, OPTIONS } from '../../vercel';
 
-describe('Vercel Serverless Hono Handler (api/index.ts)', () => {
+describe('Vercel Serverless Hono Handler (src/vercel.ts)', () => {
   it('serves GET /api/health with HTTP 200', async () => {
     const res = await GET(new Request('https://example.vercel.app/api/health'));
     expect(res.status).toBe(200);

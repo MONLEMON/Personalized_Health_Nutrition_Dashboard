@@ -1,6 +1,4 @@
 export {
-  config,
-  default,
   DELETE,
   GET,
   HEAD,
@@ -8,4 +6,4 @@ export {
   PATCH,
   POST,
   PUT,
-} from '../apps/api/src/vercel';
+} from '../dist/vercel/vercel.js';

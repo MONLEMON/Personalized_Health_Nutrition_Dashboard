@@ -1,10 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "installCommand": "bun install",
-  "buildCommand": "bun run build:web",
+  "buildCommand": "bun run --cwd apps/api build:vercel && bun run build:web",
   "outputDirectory": "apps/web/dist",
   "functions": {
-    "api/index.ts": {
+    "api/index.mjs": {
       "maxDuration": 30
     }
   },
