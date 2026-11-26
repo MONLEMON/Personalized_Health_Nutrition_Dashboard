@@ -186,6 +186,27 @@ export const UpdateSupplementsSchema = z.object({
     ),
 });
 
+export const WeekdayKeySchema = z.enum(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']);
+
+export const CalorieCyclingDayOffsetsSchema = z.object({
+  mon: z.coerce.number().int().min(-800).max(800),
+  tue: z.coerce.number().int().min(-800).max(800),
+  wed: z.coerce.number().int().min(-800).max(800),
+  thu: z.coerce.number().int().min(-800).max(800),
+  fri: z.coerce.number().int().min(-800).max(800),
+  sat: z.coerce.number().int().min(-800).max(800),
+  sun: z.coerce.number().int().min(-800).max(800),
+});
+
+export const CalorieCyclingConfigSchema = z.object({
+  enabled: z.boolean(),
+  mode: z.enum(['NONE', 'TRAINING_REST', 'WEEKEND_BUFFER', 'CUSTOM']),
+  dayOffsets: CalorieCyclingDayOffsetsSchema,
+  trainingDayOffset: z.coerce.number().int().min(-500).max(800).default(200),
+  restDayOffset: z.coerce.number().int().min(-800).max(500).default(-150),
+  trainingDays: z.array(WeekdayKeySchema).max(7).default(['mon', 'wed', 'fri', 'sat']),
+});
+
 export const UpdateProfileSettingsSchema = z.object({
   name: z.string().trim().min(1, 'Name is required').max(100),
   gender: z.enum(['male', 'female', 'other']),
@@ -196,10 +217,34 @@ export const UpdateProfileSettingsSchema = z.object({
   calorie_adjustment: z.coerce.number().int().min(-1500).max(1500),
   protein_per_kg: z.coerce.number().min(0.8).max(3.5),
   fat_ratio: z.coerce.number().min(0.15).max(0.5),
+  calorie_cycling: CalorieCyclingConfigSchema.nullable().optional(),
 });
 
 export const calendarQuerySchema = z.object({
   month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Expected YYYY-MM').optional(),
+});
+
+export const WeeklyCoachQuerySchema = z.object({
+  weekStart: z.string().regex(isoDateRegex, 'Expected YYYY-MM-DD').optional(),
+});
+
+export const GenerateWeeklyCoachSchema = z.object({
+  weekStart: z.string().regex(isoDateRegex, 'Expected YYYY-MM-DD').optional(),
+  force: z.boolean().optional().default(false),
+});
+
+export const ApplyWeeklyCoachSchema = z.object({
+  reportId: z.string().trim().min(1, 'Report ID is required').max(120),
+});
+
+export const WeeklyCoachAiNarrativeSchema = z.object({
+  weeklyScore: z.coerce.number().min(0).max(100),
+  headline: z.string().trim().min(1).max(200),
+  summary: z.string().trim().min(1).max(600),
+  wins: z.array(z.string().trim().min(1).max(240)).min(1).max(4),
+  bottlenecks: z.array(z.string().trim().min(1).max(240)).max(4),
+  actionPlan: z.array(z.string().trim().min(1).max(240)).min(1).max(4),
+  adjustmentRationale: z.string().trim().min(1).max(400),
 });
 
 export type CreateNutritionLogInput = z.infer<typeof createNutritionLogSchema>;
@@ -218,3 +263,7 @@ export type WebhookKeyResponse = z.infer<typeof WebhookKeyResponseSchema>;
 export type UpdateSupplementsInput = z.infer<typeof UpdateSupplementsSchema>;
 export type UpdateProfileSettingsInput = z.infer<typeof UpdateProfileSettingsSchema>;
 export type CalendarQueryInput = z.infer<typeof calendarQuerySchema>;
+export type CalorieCyclingConfigInput = z.infer<typeof CalorieCyclingConfigSchema>;
+export type WeeklyCoachQueryInput = z.infer<typeof WeeklyCoachQuerySchema>;
+export type GenerateWeeklyCoachInput = z.infer<typeof GenerateWeeklyCoachSchema>;
+export type ApplyWeeklyCoachInput = z.infer<typeof ApplyWeeklyCoachSchema>;

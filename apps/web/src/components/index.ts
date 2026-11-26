@@ -46,3 +46,6 @@ export type { ProfileSettingsModalProps } from './ProfileSettingsModal';
 
 export { MonthlyCalendarCard } from './MonthlyCalendarCard';
 export type { MonthlyCalendarCardProps } from './MonthlyCalendarCard';
+
+export { WeeklyCoachCard } from './WeeklyCoachCard';
+export type { WeeklyCoachCardProps } from './WeeklyCoachCard';

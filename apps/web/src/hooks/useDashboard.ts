@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   BmrFormula,
+  CalorieCyclingConfig,
+  CalorieCyclingDayType,
   CreateBatchNutritionLogsInput,
   CreateBodyMetricInput,
   CreateNutritionLogInput,
@@ -12,6 +14,9 @@ import type {
   SupplementConfig,
   SyncStatusDTO,
   UpdateProfileSettingsInput,
+  WeekdayKey,
+  WeeklyBudgetDayDTO,
+  WeeklyBudgetSummaryDTO,
   WorkoutLogDTO,
 } from '@health-dash/shared';
 import { useAuth } from '../contexts/AuthContext';
@@ -77,6 +82,155 @@ function calculateAgeFromBirthDate(birthDate: string, referenceDate: string): nu
   return Math.max(0, Number.isFinite(age) ? age : 30);
 }
 
+const WEEKDAY_KEYS_UTC: WeekdayKey[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+const WEEKDAY_SHORT_LABELS: Record<WeekdayKey, string> = {
+  mon: 'Mon',
+  tue: 'Tue',
+  wed: 'Wed',
+  thu: 'Thu',
+  fri: 'Fri',
+  sat: 'Sat',
+  sun: 'Sun',
+};
+
+function getWeekdayKeyFromIso(isoDate: string): WeekdayKey {
+  const [y, m, d] = isoDate.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return WEEKDAY_KEYS_UTC[dt.getUTCDay()] ?? 'mon';
+}
+
+function shiftIsoDateUtc(isoDate: string, deltaDays: number): string {
+  const [y, m, d] = isoDate.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + deltaDays));
+  const yy = dt.getUTCFullYear();
+  const mm = String(dt.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(dt.getUTCDate()).padStart(2, '0');
+  return `${yy}-${mm}-${dd}`;
+}
+
+function resolveFallbackCycling(
+  config: CalorieCyclingConfig | null | undefined,
+  isoDate: string,
+  hasLoggedWorkout: boolean,
+): { offset: number; dayType: CalorieCyclingDayType; label: string | null } {
+  if (!config || !config.enabled || config.mode === 'NONE') {
+    return { offset: 0, dayType: 'base', label: null };
+  }
+
+  const weekday = getWeekdayKeyFromIso(isoDate);
+  let offset = 0;
+  let isTraining = false;
+
+  if (config.mode === 'TRAINING_REST') {
+    isTraining = hasLoggedWorkout || config.trainingDays.includes(weekday);
+    offset = isTraining ? config.trainingDayOffset : config.restDayOffset;
+  } else {
+    offset = config.dayOffsets[weekday] ?? 0;
+  }
+
+  const dayType: CalorieCyclingDayType = offset > 0 ? 'high' : offset < 0 ? 'low' : 'base';
+  const signedOffset = `${offset >= 0 ? '+' : ''}${offset} kcal`;
+
+  let label: string;
+  if (config.mode === 'TRAINING_REST') {
+    if (offset === 0) {
+      label = isTraining ? 'Training Day (±0 kcal)' : 'Rest Day (±0 kcal)';
+    } else {
+      label = `${isTraining ? 'Training' : 'Rest'} ${dayType === 'high' ? 'High' : 'Low'} (${signedOffset})`;
+    }
+  } else if (config.mode === 'WEEKEND_BUFFER') {
+    label =
+      offset > 0
+        ? `Weekend Buffer (${signedOffset})`
+        : offset < 0
+          ? `Weekday Save (${signedOffset})`
+          : 'Base Day';
+  } else {
+    label =
+      dayType === 'high'
+        ? `Custom High (${signedOffset})`
+        : dayType === 'low'
+          ? `Custom Low (${signedOffset})`
+          : 'Base Day';
+  }
+
+  return { offset, dayType, label };
+}
+
+function buildFallbackWeeklyBudget(
+  todayDate: string,
+  baselineTdee: number,
+  todayActiveCalories: number,
+  todayConsumedCalories: number,
+  calorieAdjustment: number,
+  cyclingConfig: CalorieCyclingConfig | null | undefined,
+  hasTodayWorkout: boolean,
+): WeeklyBudgetSummaryDTO {
+  const [y, m, d] = todayDate.split('-').map(Number);
+  const utc = new Date(Date.UTC(y, m - 1, d));
+  const dow = utc.getUTCDay();
+  const diffToMon = dow === 0 ? -6 : 1 - dow;
+  const weekStartDate = shiftIsoDateUtc(todayDate, diffToMon);
+  const weekEndDate = shiftIsoDateUtc(weekStartDate, 6);
+
+  const days: WeeklyBudgetDayDTO[] = [];
+  let weeklyTargetCalories = 0;
+  let weeklyConsumedCalories = 0;
+  let daysElapsed = 0;
+
+  for (let i = 0; i < 7; i += 1) {
+    const date = shiftIsoDateUtc(weekStartDate, i);
+    const weekday = getWeekdayKeyFromIso(date);
+    const isToday = date === todayDate;
+    const isFuture = date > todayDate;
+    const resolved = resolveFallbackCycling(
+      cyclingConfig,
+      date,
+      isToday ? hasTodayWorkout : false,
+    );
+    const dayDynamicTdee = baselineTdee + (isToday ? todayActiveCalories : 0);
+    const targetCalories = Math.max(
+      1200,
+      Math.round(dayDynamicTdee + calorieAdjustment + resolved.offset),
+    );
+    const consumedCalories = isToday
+      ? todayConsumedCalories
+      : isFuture
+        ? 0
+        : Math.round(targetCalories * 0.94);
+
+    if (!isFuture) {
+      daysElapsed += 1;
+    }
+    weeklyTargetCalories += targetCalories;
+    weeklyConsumedCalories += consumedCalories;
+
+    days.push({
+      date,
+      weekday,
+      dayLabel: WEEKDAY_SHORT_LABELS[weekday],
+      dayType: resolved.dayType,
+      cyclingOffset: resolved.offset,
+      targetCalories,
+      consumedCalories,
+      isToday,
+      isFuture,
+    });
+  }
+
+  return {
+    weekStartDate,
+    weekEndDate,
+    weeklyTargetCalories,
+    weeklyConsumedCalories,
+    weeklyRemainingCalories: weeklyTargetCalories - weeklyConsumedCalories,
+    daysElapsed,
+    cyclingEnabled: Boolean(cyclingConfig?.enabled && cyclingConfig.mode !== 'NONE'),
+    cyclingMode: cyclingConfig?.enabled ? cyclingConfig.mode : 'NONE',
+    days,
+  };
+}
+
 function recalculateFallbackDashboard(
   prev: DashboardTodayResponse,
   meals: NutritionLogDTO[],
@@ -84,7 +238,12 @@ function recalculateFallbackDashboard(
 ): DashboardTodayResponse {
   const activeCalories = workouts.reduce((sum, w) => sum + w.activeCalories, 0);
   const dynamicTdee = Math.round(prev.energy.baselineTdee + activeCalories);
-  const targetCalories = Math.max(1200, Math.round(dynamicTdee + prev.goal.calorieAdjustment));
+  const cycling = resolveFallbackCycling(prev.goal.calorieCycling, prev.date, workouts.length > 0);
+  const baseTargetCalories = Math.max(1200, Math.round(dynamicTdee + prev.goal.calorieAdjustment));
+  const targetCalories = Math.max(
+    1200,
+    Math.round(dynamicTdee + prev.goal.calorieAdjustment + cycling.offset),
+  );
   const consumedCalories = meals.reduce((sum, m) => sum + m.calories, 0);
   const remainingCalories = targetCalories - consumedCalories;
   const intakePercentage =
@@ -95,20 +254,37 @@ function recalculateFallbackDashboard(
   const fatConsumed = Math.round(meals.reduce((sum, m) => sum + m.fatG, 0));
 
   const proteinTarget = Math.round(prev.latestMetric.weightKg * prev.goal.proteinPerKg);
-  const fatTarget = Math.round((targetCalories * prev.goal.fatRatio) / 9);
+  const fatTarget = Math.round((baseTargetCalories * prev.goal.fatRatio) / 9);
   const carbsTarget = Math.max(
     0,
     Math.round((targetCalories - proteinTarget * 4 - fatTarget * 9) / 4),
   );
 
+  const weeklyBudget =
+    prev.weeklyBudget || prev.goal.calorieCycling?.enabled
+      ? buildFallbackWeeklyBudget(
+          prev.date,
+          prev.energy.baselineTdee,
+          activeCalories,
+          consumedCalories,
+          prev.goal.calorieAdjustment,
+          prev.goal.calorieCycling,
+          workouts.length > 0,
+        )
+      : undefined;
+
   return {
     ...prev,
     meals,
     workouts,
+    weeklyBudget,
     energy: {
       ...prev.energy,
       activeCalories,
       dynamicTdee,
+      cyclingOffset: cycling.offset,
+      cyclingDayType: cycling.dayType,
+      cyclingLabel: cycling.label,
       targetCalories,
       consumedCalories,
       remainingCalories,
@@ -178,6 +354,7 @@ function recalculateFallbackSettings(
       calorieAdjustment: input.calorie_adjustment,
       proteinPerKg: input.protein_per_kg,
       fatRatio: input.fat_ratio,
+      calorieCycling: input.calorie_cycling ?? prev.goal.calorieCycling ?? null,
     },
     energy: {
       ...prev.energy,

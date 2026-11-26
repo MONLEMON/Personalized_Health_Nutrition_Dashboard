@@ -4,8 +4,9 @@ import type {
   ReadinessStatus,
   ReadinessSummary,
   UserGoalDTO,
+  WeeklyBudgetSummaryDTO,
 } from '@health-dash/shared';
-import { Activity, Flame, Gauge, ShieldCheck, Sparkles, Zap } from 'lucide-react';
+import { Activity, CalendarDays, Flame, Gauge, ShieldCheck, Sparkles, Zap } from 'lucide-react';
 import { BentoCard } from './BentoCard';
 
 export interface HeroStatusCardProps {
@@ -14,6 +15,7 @@ export interface HeroStatusCardProps {
   goal: UserGoalDTO;
   latestMetric: BodyMetricDTO;
   profileName?: string;
+  weeklyBudget?: WeeklyBudgetSummaryDTO;
 }
 
 interface StatusTheme {
@@ -215,6 +217,7 @@ export function HeroStatusCard({
   goal,
   latestMetric,
   profileName,
+  weeklyBudget,
 }: HeroStatusCardProps) {
   const theme = STATUS_THEMES[readiness.status];
   const formulaLabel =
@@ -224,6 +227,19 @@ export function HeroStatusCard({
       ? `+${goal.calorieAdjustment} kcal`
       : `${goal.calorieAdjustment} kcal`;
   const isOverTarget = energy.remainingCalories < 0;
+
+  const cyclingPillClass =
+    energy.cyclingDayType === 'high'
+      ? 'border-[#2EE6A6]/35 bg-gradient-to-r from-[#2EE6A6]/15 to-[#38BDF8]/15 text-[#2EE6A6]'
+      : energy.cyclingDayType === 'low'
+        ? 'border-[#FFB020]/35 bg-[#FFB020]/12 text-[#FFB020]'
+        : 'border-white/15 bg-white/[0.05] text-slate-200';
+
+  const weeklyOver = weeklyBudget ? weeklyBudget.weeklyRemainingCalories < 0 : false;
+  const weeklyProgressPct =
+    weeklyBudget && weeklyBudget.weeklyTargetCalories > 0
+      ? Math.round((weeklyBudget.weeklyConsumedCalories / weeklyBudget.weeklyTargetCalories) * 100)
+      : 0;
 
   return (
     <BentoCard accentGlow={theme.accentGlow} className="w-full">
@@ -250,6 +266,15 @@ export function HeroStatusCard({
                 <ShieldCheck className="h-3 w-3 text-[#38BDF8]" />
                 {formulaLabel}
               </span>
+
+              {energy.cyclingLabel ? (
+                <span
+                  className={`tabular-nums inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold ${cyclingPillClass}`}
+                >
+                  <Zap className="h-3 w-3 shrink-0" />
+                  {energy.cyclingLabel}
+                </span>
+              ) : null}
             </div>
 
             <div className="flex items-baseline gap-3">
@@ -350,6 +375,111 @@ export function HeroStatusCard({
           </div>
         </div>
       </div>
+
+      {/* Compact Weekly Calorie Budget Panel */}
+      {weeklyBudget ? (
+        <div className="mt-5 rounded-2xl border border-white/5 bg-[#0F131C]/85 p-3.5 sm:p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="inline-flex items-center gap-1.5 font-semibold text-white">
+                <CalendarDays className="h-3.5 w-3.5 text-[#38BDF8]" />
+                Weekly Budget ({weeklyBudget.weekStartDate} → {weeklyBudget.weekEndDate})
+              </span>
+              {weeklyBudget.cyclingEnabled ? (
+                <span className="rounded-full border border-[#38BDF8]/30 bg-[#38BDF8]/10 px-2 py-0.5 text-[10px] font-semibold text-[#38BDF8]">
+                  Carb Cycling
+                </span>
+              ) : null}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="tabular-nums font-semibold text-slate-200">
+                {weeklyBudget.weeklyConsumedCalories.toLocaleString()} /{' '}
+                {weeklyBudget.weeklyTargetCalories.toLocaleString()} kcal
+              </span>
+              <span
+                className={`tabular-nums rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${
+                  weeklyOver
+                    ? 'border-[#FF5C6C]/35 bg-[#FF5C6C]/12 text-[#FF5C6C]'
+                    : 'border-[#2EE6A6]/35 bg-[#2EE6A6]/12 text-[#2EE6A6]'
+                }`}
+              >
+                {weeklyOver
+                  ? `${Math.abs(weeklyBudget.weeklyRemainingCalories).toLocaleString()} kcal Over`
+                  : `${weeklyBudget.weeklyRemainingCalories.toLocaleString()} kcal Remaining`}
+              </span>
+            </div>
+          </div>
+
+          <div className="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+            <div
+              className={`h-full rounded-full transition-all duration-500 ${
+                weeklyOver ? 'bg-[#FF5C6C]' : 'bg-gradient-to-r from-[#2EE6A6] to-[#38BDF8]'
+              }`}
+              style={{ width: `${Math.min(100, Math.max(0, weeklyProgressPct))}%` }}
+            />
+          </div>
+
+          <div className="mt-3 grid grid-cols-7 gap-1 sm:gap-2">
+            {weeklyBudget.days.map((day) => {
+              const isDayOver = day.consumedCalories > day.targetCalories * 1.05;
+              const dayFillPct =
+                day.targetCalories > 0
+                  ? Math.min(100, Math.round((day.consumedCalories / day.targetCalories) * 100))
+                  : 0;
+              const cyclingBadge =
+                day.dayType === 'high' || day.cyclingOffset > 0
+                  ? { symbol: '+', className: 'text-[#2EE6A6]' }
+                  : day.dayType === 'low' || day.cyclingOffset < 0
+                    ? { symbol: '-', className: 'text-[#FFB020]' }
+                    : null;
+
+              return (
+                <div
+                  key={day.date}
+                  title={`${day.date} (${day.dayLabel}): ${day.consumedCalories.toLocaleString()} / ${day.targetCalories.toLocaleString()} kcal${
+                    day.cyclingOffset !== 0
+                      ? ` (${day.cyclingOffset > 0 ? '+' : ''}${day.cyclingOffset} kcal)`
+                      : ''
+                  }`}
+                  className={`min-w-0 rounded-xl border px-1.5 py-2 text-center transition sm:px-2.5 ${
+                    day.isToday
+                      ? 'border-[#2EE6A6]/60 bg-[#2EE6A6]/[0.09] ring-1 ring-[#2EE6A6]/60'
+                      : 'border-white/5 bg-[#0A0C10]/70'
+                  } ${day.isFuture ? 'opacity-65' : ''}`}
+                >
+                  <div className="flex items-center justify-center gap-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-300 sm:gap-1 sm:text-[11px]">
+                    <span className={day.isToday ? 'text-[#2EE6A6]' : 'text-slate-300'}>
+                      {day.dayLabel}
+                    </span>
+                    {cyclingBadge ? (
+                      <span className={`font-bold ${cyclingBadge.className}`}>
+                        {cyclingBadge.symbol}
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <div className="tabular-nums mt-1 truncate text-[11px] font-bold text-white sm:text-xs">
+                    {day.consumedCalories > 0 ? day.consumedCalories.toLocaleString() : '—'}
+                  </div>
+                  <div className="tabular-nums truncate text-[9px] text-slate-500 sm:text-[10px]">
+                    /{day.targetCalories.toLocaleString()}
+                  </div>
+
+                  <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-white/10">
+                    <div
+                      className={`h-full rounded-full ${
+                        isDayOver ? 'bg-[#FF5C6C]' : day.isToday ? 'bg-[#2EE6A6]' : 'bg-[#38BDF8]'
+                      }`}
+                      style={{ width: `${dayFillPct}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
     </BentoCard>
   );
 }

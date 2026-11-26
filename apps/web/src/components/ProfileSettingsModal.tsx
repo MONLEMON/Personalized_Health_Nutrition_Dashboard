@@ -1,14 +1,28 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import {
+  CalorieCyclingConfigSchema,
   UpdateProfileSettingsSchema,
   type BodyMetricDTO,
+  type CalorieCyclingConfig,
+  type CalorieCyclingMode,
   type GoalType,
   type Sex,
   type UpdateProfileSettingsInput,
   type UserGoalDTO,
   type UserProfileDTO,
+  type WeekdayKey,
 } from '@health-dash/shared';
-import { AlertCircle, Check, Flame, Loader2, SlidersHorizontal, Target, User, X } from 'lucide-react';
+import {
+  AlertCircle,
+  Check,
+  Flame,
+  Loader2,
+  Repeat,
+  SlidersHorizontal,
+  Target,
+  User,
+  X,
+} from 'lucide-react';
 
 export interface ProfileSettingsModalProps {
   isOpen: boolean;
@@ -56,6 +70,78 @@ const GOAL_TYPES: Array<{
 
 const CALORIE_ADJ_PRESETS = [-500, -350, -200, 0, 250, 350];
 const PROTEIN_PRESETS = [1.6, 2.0, 2.2, 2.5];
+
+type ActiveCyclingMode = Exclude<CalorieCyclingMode, 'NONE'>;
+
+const WEEKDAYS: Array<{ key: WeekdayKey; label: string }> = [
+  { key: 'mon', label: 'Mon' },
+  { key: 'tue', label: 'Tue' },
+  { key: 'wed', label: 'Wed' },
+  { key: 'thu', label: 'Thu' },
+  { key: 'fri', label: 'Fri' },
+  { key: 'sat', label: 'Sat' },
+  { key: 'sun', label: 'Sun' },
+];
+
+const DEFAULT_TRAINING_DAYS: WeekdayKey[] = ['mon', 'wed', 'fri', 'sat'];
+
+const ZERO_DAY_OFFSETS: Record<WeekdayKey, string> = {
+  mon: '0',
+  tue: '0',
+  wed: '0',
+  thu: '0',
+  fri: '0',
+  sat: '0',
+  sun: '0',
+};
+
+const WEEKEND_BUFFER_PRESETS: Array<{
+  label: string;
+  weekdayOffset: number;
+  weekendOffset: number;
+}> = [
+  { label: '-100 / +250', weekdayOffset: -100, weekendOffset: 250 },
+  { label: '-120 / +300', weekdayOffset: -120, weekendOffset: 300 },
+  { label: '-150 / +375', weekdayOffset: -150, weekendOffset: 375 },
+];
+
+function buildDayOffsetsStrings(
+  offsets?: Record<WeekdayKey, number> | null,
+  fallback?: Record<WeekdayKey, string>,
+): Record<WeekdayKey, string> {
+  if (!offsets) {
+    return { ...(fallback ?? ZERO_DAY_OFFSETS) };
+  }
+  return {
+    mon: String(offsets.mon ?? 0),
+    tue: String(offsets.tue ?? 0),
+    wed: String(offsets.wed ?? 0),
+    thu: String(offsets.thu ?? 0),
+    fri: String(offsets.fri ?? 0),
+    sat: String(offsets.sat ?? 0),
+    sun: String(offsets.sun ?? 0),
+  };
+}
+
+function buildWeekendPresetStrings(
+  weekdayOffset: number,
+  weekendOffset: number,
+): Record<WeekdayKey, string> {
+  return {
+    mon: String(weekdayOffset),
+    tue: String(weekdayOffset),
+    wed: String(weekdayOffset),
+    thu: String(weekdayOffset),
+    fri: String(weekdayOffset),
+    sat: String(weekendOffset),
+    sun: String(weekendOffset),
+  };
+}
+
+function parseIntOrZero(value: string): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.round(n) : 0;
+}
 
 function computeLivePreview(params: {
   gender: Sex;
@@ -137,6 +223,29 @@ export function ProfileSettingsModal({
   const [calorieAdjustment, setCalorieAdjustment] = useState(String(goal.calorieAdjustment));
   const [proteinPerKg, setProteinPerKg] = useState(String(goal.proteinPerKg));
   const [fatRatioPct, setFatRatioPct] = useState(String(Math.round(goal.fatRatio * 100)));
+
+  const initialCycling = goal.calorieCycling;
+  const [cyclingEnabled, setCyclingEnabled] = useState<boolean>(
+    Boolean(initialCycling?.enabled && initialCycling.mode !== 'NONE'),
+  );
+  const [cyclingMode, setCyclingMode] = useState<ActiveCyclingMode>(
+    initialCycling?.mode && initialCycling.mode !== 'NONE'
+      ? initialCycling.mode
+      : 'TRAINING_REST',
+  );
+  const [trainingDays, setTrainingDays] = useState<WeekdayKey[]>(
+    initialCycling?.trainingDays?.length ? initialCycling.trainingDays : DEFAULT_TRAINING_DAYS,
+  );
+  const [trainingDayOffset, setTrainingDayOffset] = useState<string>(
+    String(initialCycling?.trainingDayOffset ?? 200),
+  );
+  const [restDayOffset, setRestDayOffset] = useState<string>(
+    String(initialCycling?.restDayOffset ?? -150),
+  );
+  const [dayOffsets, setDayOffsets] = useState<Record<WeekdayKey, string>>(() =>
+    buildDayOffsetsStrings(initialCycling?.dayOffsets),
+  );
+
   const [error, setError] = useState<string | null>(null);
   const [localSubmitting, setLocalSubmitting] = useState(false);
 
@@ -151,6 +260,15 @@ export function ProfileSettingsModal({
       setCalorieAdjustment(String(goal.calorieAdjustment));
       setProteinPerKg(String(goal.proteinPerKg));
       setFatRatioPct(String(Math.round(goal.fatRatio * 100)));
+
+      const cfg = goal.calorieCycling;
+      setCyclingEnabled(Boolean(cfg?.enabled && cfg.mode !== 'NONE'));
+      setCyclingMode(cfg?.mode && cfg.mode !== 'NONE' ? cfg.mode : 'TRAINING_REST');
+      setTrainingDays(cfg?.trainingDays?.length ? cfg.trainingDays : DEFAULT_TRAINING_DAYS);
+      setTrainingDayOffset(String(cfg?.trainingDayOffset ?? 200));
+      setRestDayOffset(String(cfg?.restDayOffset ?? -150));
+      setDayOffsets(buildDayOffsetsStrings(cfg?.dayOffsets));
+
       setError(null);
     }
   }, [isOpen, profile, goal]);
@@ -196,6 +314,44 @@ export function ProfileSettingsModal({
     ],
   );
 
+  const cyclingPreview = useMemo(() => {
+    const baseTarget = preview?.targetCalories ?? 2200;
+    const proteinG = preview?.proteinG ?? 0;
+    const fatG = preview?.fatG ?? 0;
+
+    const days = WEEKDAYS.map(({ key, label }) => {
+      let offset = 0;
+      if (cyclingEnabled) {
+        if (cyclingMode === 'TRAINING_REST') {
+          offset = trainingDays.includes(key)
+            ? parseIntOrZero(trainingDayOffset)
+            : parseIntOrZero(restDayOffset);
+        } else {
+          offset = parseIntOrZero(dayOffsets[key]);
+        }
+      }
+      const targetCalories = Math.max(1200, Math.round(baseTarget + offset));
+      const carbsG = Math.max(
+        0,
+        Math.round((targetCalories - proteinG * 4 - fatG * 9) / 4),
+      );
+      return { key, label, offset, targetCalories, carbsG };
+    });
+
+    const netWeeklyDelta = days.reduce((sum, d) => sum + d.offset, 0);
+    return { days, netWeeklyDelta };
+  }, [
+    cyclingEnabled,
+    cyclingMode,
+    dayOffsets,
+    preview?.fatG,
+    preview?.proteinG,
+    preview?.targetCalories,
+    restDayOffset,
+    trainingDayOffset,
+    trainingDays,
+  ]);
+
   if (!isOpen) return null;
 
   const handleSelectGoalType = (opt: (typeof GOAL_TYPES)[number]) => {
@@ -206,9 +362,81 @@ export function ProfileSettingsModal({
     }
   };
 
+  const handleSelectCyclingMode = (nextMode: ActiveCyclingMode) => {
+    setCyclingMode(nextMode);
+    if (nextMode === 'WEEKEND_BUFFER') {
+      const numericValues = WEEKDAYS.map((d) => parseIntOrZero(dayOffsets[d.key]));
+      const allZero = numericValues.every((v) => v === 0);
+      const isBalancedWeekend =
+        numericValues[0] === numericValues[1] &&
+        numericValues[1] === numericValues[2] &&
+        numericValues[2] === numericValues[3] &&
+        numericValues[3] === numericValues[4] &&
+        numericValues[5] === numericValues[6] &&
+        numericValues.reduce((a, b) => a + b, 0) === 0 &&
+        numericValues[5] > 0;
+      if (allZero || !isBalancedWeekend) {
+        setDayOffsets(buildWeekendPresetStrings(-100, 250));
+      }
+    } else if (nextMode === 'CUSTOM') {
+      const allZero = WEEKDAYS.every((d) => parseIntOrZero(dayOffsets[d.key]) === 0);
+      if (allZero && cyclingMode === 'TRAINING_REST') {
+        const seeded: Record<WeekdayKey, string> = { ...ZERO_DAY_OFFSETS };
+        for (const { key } of WEEKDAYS) {
+          seeded[key] = trainingDays.includes(key) ? trainingDayOffset : restDayOffset;
+        }
+        setDayOffsets(seeded);
+      }
+    }
+  };
+
+  const handleToggleTrainingDay = (day: WeekdayKey) => {
+    setTrainingDays((prev) =>
+      prev.includes(day) ? prev.filter((item) => item !== day) : [...prev, day],
+    );
+  };
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    const candidateCycling: CalorieCyclingConfig = {
+      enabled: cyclingEnabled,
+      mode: cyclingEnabled ? cyclingMode : (goal.calorieCycling?.mode ?? 'NONE'),
+      dayOffsets: {
+        mon: dayOffsets.mon === '' ? 0 : Number(dayOffsets.mon),
+        tue: dayOffsets.tue === '' ? 0 : Number(dayOffsets.tue),
+        wed: dayOffsets.wed === '' ? 0 : Number(dayOffsets.wed),
+        thu: dayOffsets.thu === '' ? 0 : Number(dayOffsets.thu),
+        fri: dayOffsets.fri === '' ? 0 : Number(dayOffsets.fri),
+        sat: dayOffsets.sat === '' ? 0 : Number(dayOffsets.sat),
+        sun: dayOffsets.sun === '' ? 0 : Number(dayOffsets.sun),
+      },
+      trainingDayOffset: trainingDayOffset === '' ? 200 : Number(trainingDayOffset),
+      restDayOffset: restDayOffset === '' ? -150 : Number(restDayOffset),
+      trainingDays,
+    };
+
+    const safeDisabledFallback: CalorieCyclingConfig = {
+      enabled: false,
+      mode: 'NONE',
+      dayOffsets: { mon: 0, tue: 0, wed: 0, thu: 0, fri: 0, sat: 0, sun: 0 },
+      trainingDayOffset: 200,
+      restDayOffset: -150,
+      trainingDays: DEFAULT_TRAINING_DAYS,
+    };
+
+    const cyclingParsed = CalorieCyclingConfigSchema.safeParse(candidateCycling);
+    if (cyclingEnabled && !cyclingParsed.success) {
+      setError(
+        cyclingParsed.error.issues[0]?.message ?? 'Please check your calorie cycling offsets.',
+      );
+      return;
+    }
+
+    const calorieCyclingPayload: CalorieCyclingConfig = cyclingParsed.success
+      ? cyclingParsed.data
+      : safeDisabledFallback;
 
     const parsed = UpdateProfileSettingsSchema.safeParse({
       name: name.trim(),
@@ -220,6 +448,7 @@ export function ProfileSettingsModal({
       calorie_adjustment: calorieAdjustment,
       protein_per_kg: proteinPerKg,
       fat_ratio: Number(fatRatioPct) / 100,
+      calorie_cycling: calorieCyclingPayload,
     });
 
     if (!parsed.success) {
@@ -527,6 +756,277 @@ export function ProfileSettingsModal({
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Section 3: Calorie & Carb Cycling */}
+          <div className="space-y-3.5 rounded-2xl border border-white/5 bg-[#0F131C]/75 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                <Repeat className="h-3.5 w-3.5 text-[#38BDF8]" />
+                <span>Calorie &amp; Carb Cycling</span>
+              </div>
+
+              <button
+                type="button"
+                role="switch"
+                aria-checked={cyclingEnabled}
+                aria-label="Enable Cycling"
+                onClick={() => setCyclingEnabled((prev) => !prev)}
+                className="inline-flex min-h-[44px] cursor-pointer items-center gap-2.5 rounded-xl px-2 text-xs font-semibold text-slate-200 transition hover:bg-white/[0.04]"
+              >
+                <span className={cyclingEnabled ? 'text-[#2EE6A6]' : 'text-slate-400'}>
+                  Enable Cycling
+                </span>
+                <span
+                  className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition ${
+                    cyclingEnabled
+                      ? 'border-[#2EE6A6]/60 bg-[#2EE6A6]/25'
+                      : 'border-white/15 bg-white/10'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full transition ${
+                      cyclingEnabled
+                        ? 'translate-x-6 bg-[#2EE6A6]'
+                        : 'translate-x-1 bg-slate-400'
+                    }`}
+                  />
+                </span>
+              </button>
+            </div>
+
+            {cyclingEnabled ? (
+              <div className="space-y-3.5">
+                {/* Mode Selector */}
+                <div className="grid grid-cols-3 gap-2">
+                  {(
+                    [
+                      { id: 'TRAINING_REST', label: 'Training / Rest' },
+                      { id: 'WEEKEND_BUFFER', label: 'Weekend Buffer' },
+                      { id: 'CUSTOM', label: 'Custom 7-Day' },
+                    ] as const
+                  ).map((modeOpt) => {
+                    const active = cyclingMode === modeOpt.id;
+                    return (
+                      <button
+                        key={modeOpt.id}
+                        type="button"
+                        onClick={() => handleSelectCyclingMode(modeOpt.id)}
+                        className={`min-h-[44px] cursor-pointer rounded-xl border px-2 py-2 text-xs font-semibold transition ${
+                          active
+                            ? 'border-[#38BDF8]/60 bg-[#38BDF8]/15 text-[#38BDF8]'
+                            : 'border-white/10 bg-[#0A0C10]/85 text-slate-300 hover:bg-white/[0.04]'
+                        }`}
+                      >
+                        {modeOpt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Mode 1: Training / Rest */}
+                {cyclingMode === 'TRAINING_REST' ? (
+                  <div className="space-y-3">
+                    <div>
+                      <div className="mb-1.5 flex items-center justify-between text-xs text-slate-300">
+                        <span className="font-medium">Scheduled Training Days</span>
+                        <span className="text-[11px] text-slate-400">
+                          Auto-upgrades on logged workout days too
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-7 gap-1.5">
+                        {WEEKDAYS.map(({ key, label }) => {
+                          const isSelected = trainingDays.includes(key);
+                          return (
+                            <button
+                              key={key}
+                              type="button"
+                              aria-pressed={isSelected}
+                              onClick={() => handleToggleTrainingDay(key)}
+                              className={`min-h-[44px] cursor-pointer rounded-xl border text-xs font-semibold transition ${
+                                isSelected
+                                  ? 'border-[#2EE6A6]/60 bg-[#2EE6A6]/15 text-[#2EE6A6]'
+                                  : 'border-white/10 bg-[#0A0C10]/85 text-slate-400 hover:bg-white/[0.04]'
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <label className="block">
+                        <span className="text-xs font-medium text-[#2EE6A6]">
+                          Training Day Offset (kcal)
+                        </span>
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          min={-500}
+                          max={800}
+                          step={25}
+                          value={trainingDayOffset}
+                          onChange={(e) => setTrainingDayOffset(e.target.value)}
+                          className={`mt-1 tabular-nums ${inputClasses}`}
+                        />
+                      </label>
+
+                      <label className="block">
+                        <span className="text-xs font-medium text-[#FFB020]">
+                          Rest Day Offset (kcal)
+                        </span>
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          min={-800}
+                          max={500}
+                          step={25}
+                          value={restDayOffset}
+                          onChange={(e) => setRestDayOffset(e.target.value)}
+                          className={`mt-1 tabular-nums ${inputClasses}`}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                ) : null}
+
+                {/* Mode 2: Weekend Buffer */}
+                {cyclingMode === 'WEEKEND_BUFFER' ? (
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between text-xs text-slate-300">
+                      <span className="font-medium">Weekday Save / Weekend Buffer Presets</span>
+                      <span className="text-[11px] text-[#2EE6A6]">Net ±0 kcal/week</span>
+                    </div>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                      {WEEKEND_BUFFER_PRESETS.map((preset) => {
+                        const isActive =
+                          Number(dayOffsets.mon) === preset.weekdayOffset &&
+                          Number(dayOffsets.fri) === preset.weekdayOffset &&
+                          Number(dayOffsets.sat) === preset.weekendOffset &&
+                          Number(dayOffsets.sun) === preset.weekendOffset;
+                        return (
+                          <button
+                            key={preset.label}
+                            type="button"
+                            onClick={() =>
+                              setDayOffsets(
+                                buildWeekendPresetStrings(
+                                  preset.weekdayOffset,
+                                  preset.weekendOffset,
+                                ),
+                              )
+                            }
+                            className={`tabular-nums min-h-[44px] cursor-pointer rounded-xl border px-3 text-xs font-semibold transition ${
+                              isActive
+                                ? 'border-[#2EE6A6]/60 bg-[#2EE6A6]/15 text-[#2EE6A6]'
+                                : 'border-white/10 bg-[#0A0C10]/85 text-slate-300 hover:bg-white/[0.04]'
+                            }`}
+                          >
+                            {preset.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      Saves calories Mon–Fri so Sat–Sun have extra room without breaking your weekly target.
+                    </p>
+                  </div>
+                ) : null}
+
+                {/* Mode 3: Custom 7-Day */}
+                {cyclingMode === 'CUSTOM' ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs text-slate-300">
+                      <span className="font-medium">Custom 7-Day Offsets (kcal)</span>
+                      <span className="text-[11px] text-slate-400">Range -800 to +800</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-7">
+                      {WEEKDAYS.map(({ key, label }) => (
+                        <label key={key} className="block">
+                          <span className="text-[11px] font-medium text-slate-400">{label}</span>
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            min={-800}
+                            max={800}
+                            step={25}
+                            aria-label={`${label} calorie offset`}
+                            value={dayOffsets[key]}
+                            onChange={(e) =>
+                              setDayOffsets((prev) => ({ ...prev, [key]: e.target.value }))
+                            }
+                            className="mt-1 min-h-[44px] w-full rounded-xl border border-white/10 bg-[#0A0C10]/85 px-2 py-1.5 text-center text-base tabular-nums text-white focus:border-[#38BDF8]/60 focus:outline-none sm:text-sm"
+                          />
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {/* Live 7-Day Preview Strip */}
+                <div className="rounded-xl border border-white/10 bg-[#0A0C10]/80 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-white">
+                      Live 7-Day Target Preview
+                    </span>
+                    <span
+                      className={`tabular-nums rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${
+                        cyclingPreview.netWeeklyDelta === 0
+                          ? 'border-[#2EE6A6]/35 bg-[#2EE6A6]/12 text-[#2EE6A6]'
+                          : cyclingPreview.netWeeklyDelta > 0
+                            ? 'border-[#38BDF8]/35 bg-[#38BDF8]/12 text-[#38BDF8]'
+                            : 'border-[#FFB020]/35 bg-[#FFB020]/12 text-[#FFB020]'
+                      }`}
+                    >
+                      Net Weekly:{' '}
+                      {cyclingPreview.netWeeklyDelta === 0
+                        ? '±0 kcal (Balanced)'
+                        : `${cyclingPreview.netWeeklyDelta > 0 ? '+' : ''}${cyclingPreview.netWeeklyDelta} kcal`}
+                    </span>
+                  </div>
+
+                  <div className="mt-2.5 grid grid-cols-7 gap-1 sm:gap-1.5">
+                    {cyclingPreview.days.map((day) => {
+                      const offsetTone =
+                        day.offset > 0
+                          ? 'border-[#2EE6A6]/35 bg-[#2EE6A6]/10 text-[#2EE6A6]'
+                          : day.offset < 0
+                            ? 'border-[#FFB020]/35 bg-[#FFB020]/10 text-[#FFB020]'
+                            : 'border-white/10 bg-white/[0.03] text-slate-300';
+                      return (
+                        <div
+                          key={day.key}
+                          className={`min-w-0 rounded-lg border px-1 py-1.5 text-center ${offsetTone}`}
+                        >
+                          <div className="text-[10px] font-semibold uppercase">{day.label}</div>
+                          <div className="tabular-nums mt-0.5 truncate text-[11px] font-bold text-white">
+                            {day.targetCalories.toLocaleString()}
+                          </div>
+                          <div className="tabular-nums truncate text-[9px]">
+                            {day.offset > 0 ? `+${day.offset}` : day.offset}
+                          </div>
+                          {preview ? (
+                            <div className="tabular-nums truncate text-[9px] text-[#38BDF8]">
+                              {day.carbsG}g C
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <p className="mt-2 text-[11px] text-slate-400">
+                    True Carb Cycling: Carbohydrates adjust automatically on high/low days while Protein and Fat stay fixed.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400">
+                Off — daily calorie and carbohydrate targets stay uniform every day of the week.
+              </p>
+            )}
           </div>
 
           {/* Live Preview Card */}

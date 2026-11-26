@@ -3,6 +3,7 @@ import { cors } from 'hono/cors';
 import { HTTPException } from 'hono/http-exception';
 import { getRepository, type HealthRepository } from './db/repository';
 import { createAuthMiddleware, type TokenVerifierFn } from './middleware/auth';
+import { createCoachRoutes } from './routes/coach';
 import { createDashboardRoutes } from './routes/dashboard';
 import { createMeRoutes } from './routes/me';
 import { createMetricsRoutes } from './routes/metrics';
@@ -10,9 +11,11 @@ import { createNutritionRoutes, createSupplementRoutes } from './routes/nutritio
 import { createWebhookRoutes } from './routes/webhooks';
 import { createWorkoutRoutes } from './routes/workouts';
 import type { NutritionParserFn } from './services/aiNutrition';
+import type { WeeklyCoachNarrativeFn } from './services/weeklyCoach.service';
 
 export interface CreateAppOptions {
   parseNutrition?: NutritionParserFn;
+  generateWeeklyCoachNarrative?: WeeklyCoachNarrativeFn;
   jwtSecret?: string;
   verifyToken?: TokenVerifierFn;
   /** @deprecated Per-user webhook keys stored on user_profiles are now used instead. */
@@ -64,6 +67,10 @@ export function createApp(
   app.route('/api/supplements', createSupplementRoutes(resolveRepo, authMiddleware));
   app.route('/api/workouts', createWorkoutRoutes(resolveRepo, authMiddleware));
   app.route('/api/webhooks', createWebhookRoutes(resolveRepo, { authMiddleware }));
+  app.route(
+    '/api/coach',
+    createCoachRoutes(resolveRepo, authMiddleware, options?.generateWeeklyCoachNarrative),
+  );
 
   app.notFound((c) => c.json({ error: 'Not Found' }, 404));
 

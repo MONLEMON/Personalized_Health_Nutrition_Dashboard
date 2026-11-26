@@ -4,9 +4,12 @@ import { HTTPException } from 'hono/http-exception';
 import type {
   AppleHealthWebhookPayload,
   AppleHealthWebhookResponse,
+  ApplyWeeklyCoachResponse,
   BodyMetricDTO,
   CalendarDayStatus,
   CalendarDaySummaryDTO,
+  CalorieCyclingConfig,
+  CalorieCyclingMode,
   DashboardBootstrapResponse,
   DashboardTodayResponse,
   MacroProgress,
@@ -23,6 +26,11 @@ import type {
   UserProfileDTO,
   WebhookKeyResponse,
   WebhookKeyStatusDTO,
+  WeekdayKey,
+  WeeklyBudgetDayDTO,
+  WeeklyBudgetSummaryDTO,
+  WeeklyCoachReportDTO,
+  WeeklyCoachStatusResponse,
   WorkoutLogDTO,
 } from '@health-dash/shared';
 import type {
@@ -41,6 +49,7 @@ import {
   syncLogs,
   userGoals,
   userProfiles,
+  weeklyCoachReports,
   workoutLogs,
 } from './schema';
 import {
@@ -57,8 +66,17 @@ import {
   calculateMacroTargets,
   calculateTargetCalories,
   evaluateReadiness,
+  getWeekdayKey,
+  resolveCalorieCyclingForDate,
 } from '../services/tdee.service';
 import { computeBodyTrends } from '../services/trends.service';
+import {
+  computeWeeklyCoachMetrics,
+  evaluateAdaptiveAdjustment,
+  generateWeeklyCoachNarrative,
+  getWeekBounds,
+  type WeeklyCoachNarrativeFn,
+} from '../services/weeklyCoach.service';
 
 export interface ToggleSupplementResult {
   supplementKey: string;
@@ -140,6 +158,22 @@ function hasAppleHealthBodyMetricFields(
   );
 }
 
+export type UpdateProfileSettingsRepoInput = Omit<
+  UpdateProfileSettingsInput,
+  'calorie_cycling'
+> & {
+  calorie_cycling?:
+    | (Omit<
+        CalorieCyclingConfig,
+        'trainingDayOffset' | 'restDayOffset' | 'trainingDays'
+      > & {
+        trainingDayOffset?: number;
+        restDayOffset?: number;
+        trainingDays?: WeekdayKey[];
+      })
+    | null;
+};
+
 export interface HealthRepository {
   getStorageMode(): 'postgres' | 'memory';
   getMe(userId: string, email?: string | null): Promise<MeResponseDTO>;
@@ -186,7 +220,7 @@ export interface HealthRepository {
   ): Promise<SupplementConfig[]>;
   updateProfileSettings(
     userId: string,
-    input: UpdateProfileSettingsInput,
+    input: UpdateProfileSettingsRepoInput,
     email?: string | null,
   ): Promise<MeResponseDTO>;
   getBootstrapData(
@@ -196,6 +230,82 @@ export interface HealthRepository {
     date?: string,
   ): Promise<DashboardBootstrapResponse>;
   getMonthlyCalendar(userId: string, month?: string): Promise<MonthlyCalendarResponse>;
+  getWeeklyCoachStatus(
+    userId: string,
+    weekStart?: string,
+  ): Promise<WeeklyCoachStatusResponse>;
+  generateWeeklyCoachReport(
+    userId: string,
+    options?: {
+      weekStart?: string;
+      force?: boolean;
+      generateNarrative?: WeeklyCoachNarrativeFn;
+    },
+  ): Promise<WeeklyCoachReportDTO>;
+  applyWeeklyCoachRecommendation(
+    userId: string,
+    reportId: string,
+    email?: string | null,
+  ): Promise<ApplyWeeklyCoachResponse>;
+}
+
+const WEEKDAY_SHORT_LABELS: Record<WeekdayKey, string> = {
+  mon: 'Mon',
+  tue: 'Tue',
+  wed: 'Wed',
+  thu: 'Thu',
+  fri: 'Fri',
+  sat: 'Sat',
+  sun: 'Sun',
+};
+
+function cloneCalorieCycling(
+  config:
+    | (Omit<
+        CalorieCyclingConfig,
+        'trainingDayOffset' | 'restDayOffset' | 'trainingDays'
+      > & {
+        trainingDayOffset?: number;
+        restDayOffset?: number;
+        trainingDays?: WeekdayKey[];
+      })
+    | null
+    | undefined,
+): CalorieCyclingConfig | null {
+  if (!config) {
+    return null;
+  }
+  return {
+    enabled: config.enabled,
+    mode: config.mode,
+    dayOffsets: { ...config.dayOffsets },
+    trainingDayOffset: config.trainingDayOffset ?? 200,
+    restDayOffset: config.restDayOffset ?? -150,
+    trainingDays: config.trainingDays
+      ? [...config.trainingDays]
+      : ['mon', 'wed', 'fri', 'sat'],
+  };
+}
+
+function cloneGoalDTO(goal: UserGoalDTO): UserGoalDTO {
+  return {
+    ...goal,
+    calorieCycling: cloneCalorieCycling(goal.calorieCycling),
+  };
+}
+
+function cloneWeeklyCoachReport(report: WeeklyCoachReportDTO): WeeklyCoachReportDTO {
+  return {
+    ...report,
+    metrics: { ...report.metrics },
+    recommendation: { ...report.recommendation },
+    narrative: {
+      ...report.narrative,
+      wins: [...report.narrative.wins],
+      bottlenecks: [...report.narrative.bottlenecks],
+      actionPlan: [...report.narrative.actionPlan],
+    },
+  };
 }
 
 function roundTo(value: number, decimals: number): number {
@@ -213,6 +323,144 @@ function buildMacroProgress(consumed: number, target: number): MacroProgress {
   };
 }
 
+function buildWeeklyBudgetSummary(params: {
+  targetDate: string;
+  profile: UserProfileDTO;
+  goal: UserGoalDTO;
+  metricsUpToWeekEnd: BodyMetricDTO[];
+  earliestFallbackMetric: BodyMetricDTO | null;
+  workoutsInWeek: WorkoutLogDTO[];
+  nutritionInWeek: NutritionLogDTO[];
+}): WeeklyBudgetSummaryDTO {
+  const {
+    targetDate,
+    profile,
+    goal,
+    metricsUpToWeekEnd,
+    earliestFallbackMetric,
+    workoutsInWeek,
+    nutritionInWeek,
+  } = params;
+  const { weekStartDate, weekEndDate, dates } = getWeekBounds(targetDate);
+
+  const sortedMetrics = [...metricsUpToWeekEnd].sort((a, b) =>
+    a.recordedDate.localeCompare(b.recordedDate),
+  );
+
+  const workoutsByDate = new Map<string, WorkoutLogDTO[]>();
+  for (const workout of workoutsInWeek) {
+    const list = workoutsByDate.get(workout.loggedDate);
+    if (list) list.push(workout);
+    else workoutsByDate.set(workout.loggedDate, [workout]);
+  }
+
+  const nutritionByDate = new Map<string, NutritionLogDTO[]>();
+  for (const entry of nutritionInWeek) {
+    const list = nutritionByDate.get(entry.loggedDate);
+    if (list) list.push(entry);
+    else nutritionByDate.set(entry.loggedDate, [entry]);
+  }
+
+  let carryForwardMetric: BodyMetricDTO | null = null;
+  let metricPtr = 0;
+
+  const days: WeeklyBudgetDayDTO[] = [];
+  let weeklyTargetCalories = 0;
+  let weeklyConsumedCalories = 0;
+  let daysElapsed = 0;
+
+  for (const dayDate of dates) {
+    while (
+      metricPtr < sortedMetrics.length &&
+      sortedMetrics[metricPtr].recordedDate <= dayDate
+    ) {
+      carryForwardMetric = sortedMetrics[metricPtr];
+      metricPtr++;
+    }
+
+    const referenceMetric = carryForwardMetric ?? earliestFallbackMetric;
+    const refWeightKg = referenceMetric?.weightKg ?? DEFAULT_FALLBACK_WEIGHT_KG;
+    const refBodyFatPct = referenceMetric?.bodyFatPct ?? null;
+
+    const age = calculateAge(profile.birthDate, dayDate);
+    const bmrResult = calculateBmr({
+      weightKg: refWeightKg,
+      heightCm: profile.heightCm,
+      age,
+      sex: profile.sex,
+      bodyFatPct: refBodyFatPct,
+    });
+
+    const dayWorkouts = workoutsByDate.get(dayDate) ?? [];
+    const activeCalories = Math.round(
+      dayWorkouts.reduce((sum, w) => sum + w.activeCalories, 0),
+    );
+    const { dynamicTdee } = calculateDynamicTdee({
+      bmr: bmrResult.bmr,
+      baselineActivityMultiplier: profile.baselineActivityMultiplier,
+      activeCalories,
+    });
+
+    const cycling = resolveCalorieCyclingForDate(
+      goal.calorieCycling,
+      dayDate,
+      dayWorkouts.length > 0,
+    );
+    const targetCalories = calculateTargetCalories({
+      dynamicTdee,
+      calorieAdjustment: goal.calorieAdjustment,
+      cyclingOffset: cycling.offset,
+    });
+
+    const dayMeals = (nutritionByDate.get(dayDate) ?? []).filter(
+      (item) => item.mealType !== 'supplement',
+    );
+    const consumedCalories = Math.round(
+      dayMeals.reduce((sum, m) => sum + m.calories, 0),
+    );
+
+    const weekday = getWeekdayKey(dayDate);
+    const isToday = dayDate === targetDate;
+    const isFuture = dayDate > targetDate;
+    if (!isFuture) {
+      daysElapsed++;
+    }
+
+    weeklyTargetCalories += targetCalories;
+    weeklyConsumedCalories += consumedCalories;
+
+    days.push({
+      date: dayDate,
+      weekday,
+      dayLabel: WEEKDAY_SHORT_LABELS[weekday],
+      dayType: cycling.dayType,
+      cyclingOffset: cycling.offset,
+      targetCalories,
+      consumedCalories,
+      isToday,
+      isFuture,
+    });
+  }
+
+  const cyclingEnabled = Boolean(
+    goal.calorieCycling?.enabled && goal.calorieCycling.mode !== 'NONE',
+  );
+  const cyclingMode: CalorieCyclingMode =
+    cyclingEnabled && goal.calorieCycling ? goal.calorieCycling.mode : 'NONE';
+
+  return {
+    weekStartDate,
+    weekEndDate,
+    weeklyTargetCalories,
+    weeklyConsumedCalories,
+    weeklyRemainingCalories: weeklyTargetCalories - weeklyConsumedCalories,
+    daysElapsed,
+    cyclingEnabled,
+    cyclingMode,
+    days,
+  };
+}
+
 function buildDashboardTodayResponse(params: {
   date: string;
   storageMode: 'postgres' | 'memory';
@@ -221,9 +469,18 @@ function buildDashboardTodayResponse(params: {
   latestMetric: BodyMetricDTO;
   workouts: WorkoutLogDTO[];
   nutritionForDate: NutritionLogDTO[];
+  weeklyBudget?: WeeklyBudgetSummaryDTO;
 }): DashboardTodayResponse {
-  const { date, storageMode, profile, goal, latestMetric, workouts, nutritionForDate } =
-    params;
+  const {
+    date,
+    storageMode,
+    profile,
+    goal,
+    latestMetric,
+    workouts,
+    nutritionForDate,
+    weeklyBudget,
+  } = params;
 
   const age = calculateAge(profile.birthDate, date);
   const profileWithAge: UserProfileDTO = { ...profile, age };
@@ -246,13 +503,24 @@ function buildDashboardTodayResponse(params: {
     activeCalories,
   });
 
+  const cycling = resolveCalorieCyclingForDate(
+    goal.calorieCycling,
+    date,
+    workouts.length > 0,
+  );
+  const baseTargetCalories = calculateTargetCalories({
+    dynamicTdee,
+    calorieAdjustment: goal.calorieAdjustment,
+  });
   const targetCalories = calculateTargetCalories({
     dynamicTdee,
     calorieAdjustment: goal.calorieAdjustment,
+    cyclingOffset: cycling.offset,
   });
 
   const macroTargets = calculateMacroTargets({
     targetCalories,
+    baseTargetCaloriesForFat: baseTargetCalories,
     weightKg: latestMetric.weightKg,
     proteinPerKg: goal.proteinPerKg,
     fatRatio: goal.fatRatio,
@@ -300,6 +568,9 @@ function buildDashboardTodayResponse(params: {
       activeCalories,
       dynamicTdee,
       calorieAdjustment: goal.calorieAdjustment,
+      cyclingOffset: cycling.offset,
+      cyclingDayType: cycling.dayType,
+      cyclingLabel: cycling.label,
       targetCalories,
       consumedCalories,
       remainingCalories: Math.round(targetCalories - consumedCalories),
@@ -315,6 +586,7 @@ function buildDashboardTodayResponse(params: {
     workouts,
     meals,
     supplements,
+    ...(weeklyBudget ? { weeklyBudget } : {}),
   };
 }
 
@@ -479,12 +751,23 @@ function buildMonthlyCalendarResponse(params: {
       baselineActivityMultiplier: profile.baselineActivityMultiplier,
       activeCalories,
     });
-    const targetCalories = calculateTargetCalories({
+    const cycling = resolveCalorieCyclingForDate(
+      goal.calorieCycling,
+      dayDate,
+      dayWorkouts.length > 0,
+    );
+    const baseTargetCalories = calculateTargetCalories({
       dynamicTdee,
       calorieAdjustment: goal.calorieAdjustment,
     });
+    const targetCalories = calculateTargetCalories({
+      dynamicTdee,
+      calorieAdjustment: goal.calorieAdjustment,
+      cyclingOffset: cycling.offset,
+    });
     const macroTargets = calculateMacroTargets({
       targetCalories,
+      baseTargetCaloriesForFat: baseTargetCalories,
       weightKg: refWeightKg,
       proteinPerKg: goal.proteinPerKg,
       fatRatio: goal.fatRatio,
@@ -617,6 +900,7 @@ interface InMemoryUserRecord {
   workouts: WorkoutLogDTO[];
   nutrition: NutritionLogDTO[];
   syncLogs: InMemorySyncLogRecord[];
+  coachReports: WeeklyCoachReportDTO[];
 }
 
 export class InMemoryHealthRepository implements HealthRepository {
@@ -632,7 +916,12 @@ export class InMemoryHealthRepository implements HealthRepository {
       },
       webhookKeyHash: null,
       webhookKeyPrefix: null,
-      goals: [{ ...seed.goal }],
+      goals: [
+        {
+          ...seed.goal,
+          calorieCycling: cloneCalorieCycling(seed.goal.calorieCycling),
+        },
+      ],
       metrics: seed.bodyMetrics.map((m) => ({
         ...m,
         restingHr: m.restingHr ?? null,
@@ -647,6 +936,7 @@ export class InMemoryHealthRepository implements HealthRepository {
         source: n.source ?? 'MANUAL',
       })),
       syncLogs: [],
+      coachReports: [],
     });
   }
 
@@ -709,7 +999,7 @@ export class InMemoryHealthRepository implements HealthRepository {
         webhookKeyPrefix: user.webhookKeyPrefix,
         supplementStack: user.profile.supplementStack.map((s) => ({ ...s })),
       },
-      goal: { ...activeGoal },
+      goal: cloneGoalDTO(activeGoal),
       webhookKey: buildWebhookKeyStatus(user.webhookKeyPrefix, user.webhookKeyHash),
     };
   }
@@ -746,6 +1036,7 @@ export class InMemoryHealthRepository implements HealthRepository {
       proteinPerKg: input.protein_per_kg,
       fatRatio: input.fat_ratio,
       isActive: true,
+      calorieCycling: null,
     };
 
     const userRecord: InMemoryUserRecord = existing ?? {
@@ -757,6 +1048,7 @@ export class InMemoryHealthRepository implements HealthRepository {
       workouts: [],
       nutrition: [],
       syncLogs: [],
+      coachReports: [],
     };
 
     userRecord.profile = profile;
@@ -826,39 +1118,59 @@ export class InMemoryHealthRepository implements HealthRepository {
     }
 
     const targetDate = date ?? getLocalDateString();
-    const eligibleMetrics = user.metrics.filter((m) => m.recordedDate <= targetDate);
-    const pool = eligibleMetrics.length > 0 ? eligibleMetrics : user.metrics;
-    if (pool.length === 0) {
-      throw new HTTPException(404, {
-        message: 'No body metrics found for user. Complete onboarding first.',
-      });
-    }
+    const { weekStartDate, weekEndDate } = getWeekBounds(targetDate);
+    const allUserMetrics = [...user.metrics]
+      .filter((m) => m.userId === userId)
+      .sort((a, b) => a.recordedDate.localeCompare(b.recordedDate));
+    const latestMetric = selectLatestMetric(allUserMetrics, targetDate);
 
-    // Latest by recordedDate; array order preserves insertion order for same-day entries
-    let latestMetric = pool[pool.length - 1];
-    for (const metric of pool) {
-      if (metric.recordedDate >= latestMetric.recordedDate) {
-        latestMetric = metric;
-      }
-    }
+    const metricsUpToWeekEnd = allUserMetrics.filter(
+      (m) => m.recordedDate <= weekEndDate,
+    );
+    const earliestFallbackMetric = allUserMetrics[0] ?? null;
 
-    const workouts = user.workouts
-      .filter((w) => w.userId === userId && w.loggedDate === targetDate)
+    const workoutsInWeek = user.workouts
+      .filter(
+        (w) =>
+          w.userId === userId &&
+          w.loggedDate >= weekStartDate &&
+          w.loggedDate <= weekEndDate,
+      )
       .sort((a, b) => a.loggedAt.localeCompare(b.loggedAt))
       .map((w) => ({ ...w, activityType: w.activityType ?? 'MANUAL' }));
-
-    const nutritionForDate = user.nutrition
-      .filter((n) => n.userId === userId && n.loggedDate === targetDate)
+    const nutritionInWeek = user.nutrition
+      .filter(
+        (n) =>
+          n.userId === userId &&
+          n.loggedDate >= weekStartDate &&
+          n.loggedDate <= weekEndDate,
+      )
       .sort((a, b) => a.loggedAt.localeCompare(b.loggedAt));
+
+    const workouts = workoutsInWeek.filter((w) => w.loggedDate === targetDate);
+    const nutritionForDate = nutritionInWeek.filter((n) => n.loggedDate === targetDate);
+
+    const profileDTO: UserProfileDTO = {
+      ...user.profile,
+      webhookKeyPrefix: user.webhookKeyPrefix,
+      supplementStack: user.profile.supplementStack.map((s) => ({ ...s })),
+    };
+    const goalDTO = cloneGoalDTO(activeGoal);
+    const weeklyBudget = buildWeeklyBudgetSummary({
+      targetDate,
+      profile: profileDTO,
+      goal: goalDTO,
+      metricsUpToWeekEnd,
+      earliestFallbackMetric,
+      workoutsInWeek,
+      nutritionInWeek,
+    });
 
     return buildDashboardTodayResponse({
       date: targetDate,
       storageMode: 'memory',
-      profile: {
-        ...user.profile,
-        webhookKeyPrefix: user.webhookKeyPrefix,
-      },
-      goal: { ...activeGoal },
+      profile: profileDTO,
+      goal: goalDTO,
       latestMetric: {
         ...latestMetric,
         restingHr: latestMetric.restingHr ?? null,
@@ -866,6 +1178,7 @@ export class InMemoryHealthRepository implements HealthRepository {
       },
       workouts,
       nutritionForDate,
+      weeklyBudget,
     });
   }
 
@@ -1198,7 +1511,7 @@ export class InMemoryHealthRepository implements HealthRepository {
 
   async updateProfileSettings(
     userId: string,
-    input: UpdateProfileSettingsInput,
+    input: UpdateProfileSettingsRepoInput,
     email?: string | null,
   ): Promise<MeResponseDTO> {
     const user = this.requireUser(userId);
@@ -1220,6 +1533,9 @@ export class InMemoryHealthRepository implements HealthRepository {
     activeGoal.calorieAdjustment = input.calorie_adjustment;
     activeGoal.proteinPerKg = input.protein_per_kg;
     activeGoal.fatRatio = input.fat_ratio;
+    if (input.calorie_cycling !== undefined) {
+      activeGoal.calorieCycling = cloneCalorieCycling(input.calorie_cycling);
+    }
 
     return this.getMe(userId, email);
   }
@@ -1231,6 +1547,7 @@ export class InMemoryHealthRepository implements HealthRepository {
     date?: string,
   ): Promise<DashboardBootstrapResponse> {
     const targetDate = date ?? getLocalDateString();
+    const { weekStartDate, weekEndDate } = getWeekBounds(targetDate);
     const user = this.users.get(userId);
     const activeGoal = user?.goals.find((g) => g.isActive) ?? null;
     const syncStatus = await this.getAppleHealthSyncStatus(userId);
@@ -1254,8 +1571,12 @@ export class InMemoryHealthRepository implements HealthRepository {
       };
     }
 
-    const allMetrics = user.metrics.filter((m) => m.userId === userId);
+    const allMetrics = [...user.metrics]
+      .filter((m) => m.userId === userId)
+      .sort((a, b) => a.recordedDate.localeCompare(b.recordedDate));
     const latestMetric = selectLatestMetric(allMetrics, targetDate);
+    const metricsUpToWeekEnd = allMetrics.filter((m) => m.recordedDate <= weekEndDate);
+    const earliestFallbackMetric = allMetrics[0] ?? null;
 
     const profileDTO: UserProfileDTO = {
       ...user.profile,
@@ -1263,7 +1584,7 @@ export class InMemoryHealthRepository implements HealthRepository {
       webhookKeyPrefix: user.webhookKeyPrefix,
       supplementStack: user.profile.supplementStack.map((s) => ({ ...s })),
     };
-    const goalDTO: UserGoalDTO = { ...activeGoal };
+    const goalDTO = cloneGoalDTO(activeGoal);
     const me: MeResponseDTO = {
       userId,
       email: email ?? null,
@@ -1273,13 +1594,36 @@ export class InMemoryHealthRepository implements HealthRepository {
       webhookKey,
     };
 
-    const workouts = user.workouts
-      .filter((w) => w.userId === userId && w.loggedDate === targetDate)
+    const workoutsInWeek = user.workouts
+      .filter(
+        (w) =>
+          w.userId === userId &&
+          w.loggedDate >= weekStartDate &&
+          w.loggedDate <= weekEndDate,
+      )
       .sort((a, b) => a.loggedAt.localeCompare(b.loggedAt))
       .map((w) => ({ ...w, activityType: w.activityType ?? 'MANUAL' }));
-    const nutritionForDate = user.nutrition
-      .filter((n) => n.userId === userId && n.loggedDate === targetDate)
+    const nutritionInWeek = user.nutrition
+      .filter(
+        (n) =>
+          n.userId === userId &&
+          n.loggedDate >= weekStartDate &&
+          n.loggedDate <= weekEndDate,
+      )
       .sort((a, b) => a.loggedAt.localeCompare(b.loggedAt));
+
+    const workouts = workoutsInWeek.filter((w) => w.loggedDate === targetDate);
+    const nutritionForDate = nutritionInWeek.filter((n) => n.loggedDate === targetDate);
+
+    const weeklyBudget = buildWeeklyBudgetSummary({
+      targetDate,
+      profile: profileDTO,
+      goal: goalDTO,
+      metricsUpToWeekEnd,
+      earliestFallbackMetric,
+      workoutsInWeek,
+      nutritionInWeek,
+    });
 
     const dashboard = buildDashboardTodayResponse({
       date: targetDate,
@@ -1293,6 +1637,7 @@ export class InMemoryHealthRepository implements HealthRepository {
       },
       workouts,
       nutritionForDate,
+      weeklyBudget,
     });
 
     const trends = computeBodyTrends(allMetrics, days);
@@ -1344,12 +1689,187 @@ export class InMemoryHealthRepository implements HealthRepository {
         ...user.profile,
         supplementStack: user.profile.supplementStack.map((s) => ({ ...s })),
       },
-      goal: { ...activeGoal },
+      goal: cloneGoalDTO(activeGoal),
       metricsUpToMonthEnd,
       earliestFallbackMetric,
       workoutsInMonth,
       nutritionInMonth,
     });
+  }
+
+  async getWeeklyCoachStatus(
+    userId: string,
+    weekStart?: string,
+  ): Promise<WeeklyCoachStatusResponse> {
+    const user = this.requireUser(userId);
+    const activeGoal = user.goals.find((g) => g.isActive);
+    if (!activeGoal) {
+      throw new HTTPException(404, {
+        message: 'User profile not found. Complete onboarding first.',
+      });
+    }
+
+    const { weekStartDate, weekEndDate } = getWeekBounds(weekStart);
+    const goalDTO = cloneGoalDTO(activeGoal);
+    const profileDTO: UserProfileDTO = {
+      ...user.profile,
+      supplementStack: user.profile.supplementStack.map((s) => ({ ...s })),
+    };
+
+    const metricsUpToWeekEnd = user.metrics.filter(
+      (m) => m.userId === userId && m.recordedDate <= weekEndDate,
+    );
+    const workoutsForWeek = user.workouts.filter(
+      (w) =>
+        w.userId === userId &&
+        w.loggedDate >= weekStartDate &&
+        w.loggedDate <= weekEndDate,
+    );
+    const nutritionForWeek = user.nutrition.filter(
+      (n) =>
+        n.userId === userId &&
+        n.loggedDate >= weekStartDate &&
+        n.loggedDate <= weekEndDate,
+    );
+
+    const liveMetrics = computeWeeklyCoachMetrics({
+      weekStartDate,
+      profile: profileDTO,
+      goal: goalDTO,
+      metricsUpToWeekEnd,
+      workoutsForWeek,
+      nutritionForWeek,
+    });
+    const liveRecommendation = evaluateAdaptiveAdjustment(liveMetrics, goalDTO);
+
+    const existing = user.coachReports.find((r) => r.weekStartDate === weekStartDate);
+    return {
+      report: existing ? cloneWeeklyCoachReport(existing) : null,
+      liveMetrics,
+      liveRecommendation,
+    };
+  }
+
+  async generateWeeklyCoachReport(
+    userId: string,
+    options?: {
+      weekStart?: string;
+      force?: boolean;
+      generateNarrative?: WeeklyCoachNarrativeFn;
+    },
+  ): Promise<WeeklyCoachReportDTO> {
+    const user = this.requireUser(userId);
+    const activeGoal = user.goals.find((g) => g.isActive);
+    if (!activeGoal) {
+      throw new HTTPException(404, {
+        message: 'User profile not found. Complete onboarding first.',
+      });
+    }
+
+    const { weekStartDate, weekEndDate } = getWeekBounds(options?.weekStart);
+    const existingIndex = user.coachReports.findIndex(
+      (r) => r.weekStartDate === weekStartDate,
+    );
+    if (existingIndex !== -1 && !options?.force) {
+      return cloneWeeklyCoachReport(user.coachReports[existingIndex]);
+    }
+
+    const goalDTO = cloneGoalDTO(activeGoal);
+    const profileDTO: UserProfileDTO = {
+      ...user.profile,
+      supplementStack: user.profile.supplementStack.map((s) => ({ ...s })),
+    };
+
+    const metricsUpToWeekEnd = user.metrics.filter(
+      (m) => m.userId === userId && m.recordedDate <= weekEndDate,
+    );
+    const workoutsForWeek = user.workouts.filter(
+      (w) =>
+        w.userId === userId &&
+        w.loggedDate >= weekStartDate &&
+        w.loggedDate <= weekEndDate,
+    );
+    const nutritionForWeek = user.nutrition.filter(
+      (n) =>
+        n.userId === userId &&
+        n.loggedDate >= weekStartDate &&
+        n.loggedDate <= weekEndDate,
+    );
+
+    const metrics = computeWeeklyCoachMetrics({
+      weekStartDate,
+      profile: profileDTO,
+      goal: goalDTO,
+      metricsUpToWeekEnd,
+      workoutsForWeek,
+      nutritionForWeek,
+    });
+    const recommendation = evaluateAdaptiveAdjustment(metrics, goalDTO);
+    const narrativeFn = options?.generateNarrative ?? generateWeeklyCoachNarrative;
+    const narrative = await narrativeFn(metrics, recommendation, goalDTO);
+
+    const report: WeeklyCoachReportDTO = {
+      id:
+        existingIndex !== -1
+          ? user.coachReports[existingIndex].id
+          : `coach-${crypto.randomUUID()}`,
+      userId,
+      weekStartDate,
+      weekEndDate,
+      metrics,
+      recommendation,
+      narrative,
+      appliedAt: null,
+      generatedAt: new Date().toISOString(),
+    };
+
+    if (existingIndex !== -1) {
+      user.coachReports[existingIndex] = report;
+    } else {
+      user.coachReports.push(report);
+    }
+
+    return cloneWeeklyCoachReport(report);
+  }
+
+  async applyWeeklyCoachRecommendation(
+    userId: string,
+    reportId: string,
+    email?: string | null,
+  ): Promise<ApplyWeeklyCoachResponse> {
+    const user = this.requireUser(userId);
+    const report = user.coachReports.find(
+      (r) => r.id === reportId && r.userId === userId,
+    );
+    if (!report) {
+      throw new HTTPException(404, {
+        message: 'Weekly coach report not found.',
+      });
+    }
+
+    const activeGoal = user.goals.find((g) => g.isActive);
+    if (!activeGoal) {
+      throw new HTTPException(404, {
+        message: 'User profile not found. Complete onboarding first.',
+      });
+    }
+
+    if (!report.recommendation.canApply) {
+      throw new HTTPException(400, {
+        message: 'Recommendation does not propose an applicable calorie adjustment.',
+      });
+    }
+
+    if (!report.appliedAt) {
+      activeGoal.calorieAdjustment = report.recommendation.suggestedCalorieAdjustment;
+      report.appliedAt = new Date().toISOString();
+    }
+
+    const me = await this.getMe(userId, email);
+    return {
+      report: cloneWeeklyCoachReport(report),
+      me,
+    };
   }
 }
 
@@ -1422,14 +1942,95 @@ function toGoalDTO(row: typeof userGoals.$inferSelect): UserGoalDTO {
     proteinPerKg: row.proteinPerKg,
     fatRatio: row.fatRatio,
     isActive: row.isActive,
+    calorieCycling: cloneCalorieCycling(row.calorieCyclingConfig),
   };
 }
 
+function toWeeklyCoachReportDTO(
+  row: typeof weeklyCoachReports.$inferSelect,
+): WeeklyCoachReportDTO {
+  return cloneWeeklyCoachReport({
+    id: row.id,
+    userId: row.userId,
+    weekStartDate: row.weekStartDate,
+    weekEndDate: row.weekEndDate,
+    metrics: row.metrics,
+    recommendation: row.recommendation,
+    narrative: row.narrative,
+    appliedAt: row.appliedAt ? row.appliedAt.toISOString() : null,
+    generatedAt: row.generatedAt.toISOString(),
+  });
+}
+
 export class PostgresHealthRepository implements HealthRepository {
+  private phase6SchemaPromise: Promise<void> | null = null;
+
   constructor(private readonly db: Database) {}
 
   getStorageMode(): 'postgres' | 'memory' {
     return 'postgres';
+  }
+
+  private ensurePhase6Schema(): Promise<void> {
+    if (!this.phase6SchemaPromise) {
+      this.phase6SchemaPromise = (async () => {
+        await this.db.execute(sql`
+          ALTER TABLE public.user_goals
+            ADD COLUMN IF NOT EXISTS calorie_cycling_config jsonb
+        `);
+        await this.db.execute(sql`
+          CREATE TABLE IF NOT EXISTS public.weekly_coach_reports (
+            id text PRIMARY KEY,
+            user_id text NOT NULL REFERENCES public.user_profiles(id) ON DELETE CASCADE,
+            week_start_date text NOT NULL,
+            week_end_date text NOT NULL,
+            metrics jsonb NOT NULL,
+            recommendation jsonb NOT NULL,
+            narrative jsonb NOT NULL,
+            applied_at timestamptz,
+            generated_at timestamptz NOT NULL DEFAULT now()
+          )
+        `);
+        await this.db.execute(sql`
+          CREATE UNIQUE INDEX IF NOT EXISTS weekly_coach_reports_user_week_uniq
+            ON public.weekly_coach_reports (user_id, week_start_date)
+        `);
+        await this.db.execute(sql`
+          ALTER TABLE public.weekly_coach_reports ENABLE ROW LEVEL SECURITY
+        `);
+        await this.db.execute(sql`
+          DO $$
+          BEGIN
+            IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+              REVOKE ALL ON TABLE public.weekly_coach_reports FROM anon;
+            END IF;
+            IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+              REVOKE ALL ON TABLE public.weekly_coach_reports FROM authenticated;
+            END IF;
+            IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+              IF NOT EXISTS (
+                SELECT 1
+                FROM pg_policies
+                WHERE schemaname = 'public'
+                  AND tablename = 'weekly_coach_reports'
+                  AND policyname = 'service_role_full_access'
+              ) THEN
+                CREATE POLICY service_role_full_access
+                  ON public.weekly_coach_reports
+                  FOR ALL
+                  TO service_role
+                  USING (true)
+                  WITH CHECK (true);
+              END IF;
+            END IF;
+          END $$
+        `);
+      })().catch((err) => {
+        this.phase6SchemaPromise = null;
+        throw err;
+      });
+    }
+    return this.phase6SchemaPromise;
   }
 
   private async findProfileRow(
@@ -1459,6 +2060,7 @@ export class PostgresHealthRepository implements HealthRepository {
     profile: UserProfileDTO;
     goal: UserGoalDTO;
   }> {
+    await this.ensurePhase6Schema();
     const [profileRow, [goalRow]] = await Promise.all([
       this.findProfileRow(userId),
       this.db
@@ -1482,6 +2084,7 @@ export class PostgresHealthRepository implements HealthRepository {
   }
 
   async getMe(userId: string, email?: string | null): Promise<MeResponseDTO> {
+    await this.ensurePhase6Schema();
     const [profileRow, [goalRow]] = await Promise.all([
       this.findProfileRow(userId),
       this.db
@@ -1539,6 +2142,7 @@ export class PostgresHealthRepository implements HealthRepository {
     fallbackName?: string,
     email?: string | null,
   ): Promise<MeResponseDTO> {
+    await this.ensurePhase6Schema();
     const recordedDate = getBangkokDateString();
     const resolvedName = input.name?.trim() || fallbackName?.trim() || 'Athlete';
     const supplementStack = DEFAULT_SUPPLEMENT_STACK.map((s) => ({ ...s }));
@@ -1580,6 +2184,7 @@ export class PostgresHealthRepository implements HealthRepository {
         proteinPerKg: input.protein_per_kg,
         fatRatio: input.fat_ratio,
         isActive: true,
+        calorieCyclingConfig: null,
       });
 
       await tx
@@ -1649,51 +2254,81 @@ export class PostgresHealthRepository implements HealthRepository {
   }
 
   async getTodayData(userId: string, date?: string): Promise<DashboardTodayResponse> {
+    await this.ensurePhase6Schema();
     const targetDate = date ?? getLocalDateString();
+    const { weekStartDate, weekEndDate } = getWeekBounds(targetDate);
 
-    const [{ profile, goal }, eligibleMetrics, workoutRows, nutritionRows] =
+    const [{ profile, goal }, metricRowsUpToWeekEnd, weekWorkoutRows, weekNutritionRows] =
       await Promise.all([
         this.getProfileAndGoal(userId),
         this.db
           .select()
           .from(bodyMetrics)
-          .where(and(eq(bodyMetrics.userId, userId), lte(bodyMetrics.recordedDate, targetDate)))
-          .orderBy(desc(bodyMetrics.recordedDate), desc(bodyMetrics.createdAt))
-          .limit(1),
+          .where(
+            and(eq(bodyMetrics.userId, userId), lte(bodyMetrics.recordedDate, weekEndDate)),
+          )
+          .orderBy(asc(bodyMetrics.recordedDate), asc(bodyMetrics.createdAt)),
         this.db
           .select()
           .from(workoutLogs)
-          .where(and(eq(workoutLogs.userId, userId), eq(workoutLogs.loggedDate, targetDate)))
+          .where(
+            and(
+              eq(workoutLogs.userId, userId),
+              gte(workoutLogs.loggedDate, weekStartDate),
+              lte(workoutLogs.loggedDate, weekEndDate),
+            ),
+          )
           .orderBy(asc(workoutLogs.loggedAt)),
         this.db
           .select()
           .from(nutritionLogs)
           .where(
-            and(eq(nutritionLogs.userId, userId), eq(nutritionLogs.loggedDate, targetDate)),
+            and(
+              eq(nutritionLogs.userId, userId),
+              gte(nutritionLogs.loggedDate, weekStartDate),
+              lte(nutritionLogs.loggedDate, weekEndDate),
+            ),
           )
           .orderBy(asc(nutritionLogs.loggedAt)),
       ]);
 
-    let metricRow = eligibleMetrics[0];
-    if (!metricRow) {
+    const metricsUpToWeekEnd = metricRowsUpToWeekEnd.map(toBodyMetricDTO);
+    let earliestFallbackMetric: BodyMetricDTO | null = metricsUpToWeekEnd[0] ?? null;
+
+    if (metricsUpToWeekEnd.length === 0) {
       const fallback = await this.db
         .select()
         .from(bodyMetrics)
         .where(eq(bodyMetrics.userId, userId))
         .orderBy(desc(bodyMetrics.recordedDate), desc(bodyMetrics.createdAt))
         .limit(1);
-      metricRow = fallback[0];
+      if (fallback[0]) {
+        earliestFallbackMetric = toBodyMetricDTO(fallback[0]);
+      }
     }
 
-    if (!metricRow) {
-      throw new HTTPException(404, {
-        message: 'No body metrics found for user. Complete onboarding first.',
-      });
-    }
+    const metricPool =
+      metricsUpToWeekEnd.length > 0
+        ? metricsUpToWeekEnd
+        : earliestFallbackMetric
+          ? [earliestFallbackMetric]
+          : [];
+    const latestMetric = selectLatestMetric(metricPool, targetDate);
 
-    const latestMetric = toBodyMetricDTO(metricRow);
-    const workouts: WorkoutLogDTO[] = workoutRows.map(toWorkoutLogDTO);
-    const nutritionForDate: NutritionLogDTO[] = nutritionRows.map(toNutritionLogDTO);
+    const workoutsInWeek: WorkoutLogDTO[] = weekWorkoutRows.map(toWorkoutLogDTO);
+    const nutritionInWeek: NutritionLogDTO[] = weekNutritionRows.map(toNutritionLogDTO);
+    const workouts = workoutsInWeek.filter((w) => w.loggedDate === targetDate);
+    const nutritionForDate = nutritionInWeek.filter((n) => n.loggedDate === targetDate);
+
+    const weeklyBudget = buildWeeklyBudgetSummary({
+      targetDate,
+      profile,
+      goal,
+      metricsUpToWeekEnd,
+      earliestFallbackMetric,
+      workoutsInWeek,
+      nutritionInWeek,
+    });
 
     return buildDashboardTodayResponse({
       date: targetDate,
@@ -1703,6 +2338,7 @@ export class PostgresHealthRepository implements HealthRepository {
       latestMetric,
       workouts,
       nutritionForDate,
+      weeklyBudget,
     });
   }
 
@@ -2088,9 +2724,10 @@ export class PostgresHealthRepository implements HealthRepository {
 
   async updateProfileSettings(
     userId: string,
-    input: UpdateProfileSettingsInput,
+    input: UpdateProfileSettingsRepoInput,
     email?: string | null,
   ): Promise<MeResponseDTO> {
+    await this.ensurePhase6Schema();
     await this.db.transaction(async (tx) => {
       const [updatedProfile] = await tx
         .update(userProfiles)
@@ -2130,6 +2767,9 @@ export class PostgresHealthRepository implements HealthRepository {
           calorieAdjustment: input.calorie_adjustment,
           proteinPerKg: input.protein_per_kg,
           fatRatio: input.fat_ratio,
+          ...(input.calorie_cycling !== undefined
+            ? { calorieCyclingConfig: cloneCalorieCycling(input.calorie_cycling) }
+            : {}),
         })
         .where(eq(userGoals.id, activeGoalRow.id));
     });
@@ -2143,7 +2783,9 @@ export class PostgresHealthRepository implements HealthRepository {
     email?: string | null,
     date?: string,
   ): Promise<DashboardBootstrapResponse> {
+    await this.ensurePhase6Schema();
     const targetDate = date ?? getLocalDateString();
+    const { weekStartDate, weekEndDate } = getWeekBounds(targetDate);
 
     const [
       profileRow,
@@ -2168,13 +2810,23 @@ export class PostgresHealthRepository implements HealthRepository {
       this.db
         .select()
         .from(workoutLogs)
-        .where(and(eq(workoutLogs.userId, userId), eq(workoutLogs.loggedDate, targetDate)))
+        .where(
+          and(
+            eq(workoutLogs.userId, userId),
+            gte(workoutLogs.loggedDate, weekStartDate),
+            lte(workoutLogs.loggedDate, weekEndDate),
+          ),
+        )
         .orderBy(asc(workoutLogs.loggedAt)),
       this.db
         .select()
         .from(nutritionLogs)
         .where(
-          and(eq(nutritionLogs.userId, userId), eq(nutritionLogs.loggedDate, targetDate)),
+          and(
+            eq(nutritionLogs.userId, userId),
+            gte(nutritionLogs.loggedDate, weekStartDate),
+            lte(nutritionLogs.loggedDate, weekEndDate),
+          ),
         )
         .orderBy(asc(nutritionLogs.loggedAt)),
       this.db
@@ -2208,6 +2860,9 @@ export class PostgresHealthRepository implements HealthRepository {
 
     const allMetrics = metricRows.map(toBodyMetricDTO);
     const latestMetric = selectLatestMetric(allMetrics, targetDate);
+    const metricsUpToWeekEnd = allMetrics.filter((m) => m.recordedDate <= weekEndDate);
+    const earliestFallbackMetric = allMetrics[0] ?? null;
+
     const profileDTO = toProfileDTO(profileRow);
     const goalDTO = toGoalDTO(goalRow);
 
@@ -2220,14 +2875,30 @@ export class PostgresHealthRepository implements HealthRepository {
       webhookKey,
     };
 
+    const workoutsInWeek = workoutRows.map(toWorkoutLogDTO);
+    const nutritionInWeek = nutritionRows.map(toNutritionLogDTO);
+    const workouts = workoutsInWeek.filter((w) => w.loggedDate === targetDate);
+    const nutritionForDate = nutritionInWeek.filter((n) => n.loggedDate === targetDate);
+
+    const weeklyBudget = buildWeeklyBudgetSummary({
+      targetDate,
+      profile: profileDTO,
+      goal: goalDTO,
+      metricsUpToWeekEnd,
+      earliestFallbackMetric,
+      workoutsInWeek,
+      nutritionInWeek,
+    });
+
     const dashboard = buildDashboardTodayResponse({
       date: targetDate,
       storageMode: 'postgres',
       profile: profileDTO,
       goal: goalDTO,
       latestMetric,
-      workouts: workoutRows.map(toWorkoutLogDTO),
-      nutritionForDate: nutritionRows.map(toNutritionLogDTO),
+      workouts,
+      nutritionForDate,
+      weeklyBudget,
     });
 
     const trends = computeBodyTrends(allMetrics, days);
@@ -2239,6 +2910,7 @@ export class PostgresHealthRepository implements HealthRepository {
     userId: string,
     month?: string,
   ): Promise<MonthlyCalendarResponse> {
+    await this.ensurePhase6Schema();
     const { resolvedMonth, daysInMonth, monthStart, monthEnd, today } =
       getMonthBounds(month);
 
@@ -2298,6 +2970,242 @@ export class PostgresHealthRepository implements HealthRepository {
       workoutsInMonth: workoutRows.map(toWorkoutLogDTO),
       nutritionInMonth: nutritionRows.map(toNutritionLogDTO),
     });
+  }
+
+  async getWeeklyCoachStatus(
+    userId: string,
+    weekStart?: string,
+  ): Promise<WeeklyCoachStatusResponse> {
+    await this.ensurePhase6Schema();
+    const { weekStartDate, weekEndDate } = getWeekBounds(weekStart);
+
+    const [{ profile, goal }, metricRows, workoutRows, nutritionRows, [reportRow]] =
+      await Promise.all([
+        this.getProfileAndGoal(userId),
+        this.db
+          .select()
+          .from(bodyMetrics)
+          .where(
+            and(eq(bodyMetrics.userId, userId), lte(bodyMetrics.recordedDate, weekEndDate)),
+          )
+          .orderBy(asc(bodyMetrics.recordedDate), asc(bodyMetrics.createdAt)),
+        this.db
+          .select()
+          .from(workoutLogs)
+          .where(
+            and(
+              eq(workoutLogs.userId, userId),
+              gte(workoutLogs.loggedDate, weekStartDate),
+              lte(workoutLogs.loggedDate, weekEndDate),
+            ),
+          )
+          .orderBy(asc(workoutLogs.loggedAt)),
+        this.db
+          .select()
+          .from(nutritionLogs)
+          .where(
+            and(
+              eq(nutritionLogs.userId, userId),
+              gte(nutritionLogs.loggedDate, weekStartDate),
+              lte(nutritionLogs.loggedDate, weekEndDate),
+            ),
+          )
+          .orderBy(asc(nutritionLogs.loggedAt)),
+        this.db
+          .select()
+          .from(weeklyCoachReports)
+          .where(
+            and(
+              eq(weeklyCoachReports.userId, userId),
+              eq(weeklyCoachReports.weekStartDate, weekStartDate),
+            ),
+          )
+          .limit(1),
+      ]);
+
+    const liveMetrics = computeWeeklyCoachMetrics({
+      weekStartDate,
+      profile,
+      goal,
+      metricsUpToWeekEnd: metricRows.map(toBodyMetricDTO),
+      workoutsForWeek: workoutRows.map(toWorkoutLogDTO),
+      nutritionForWeek: nutritionRows.map(toNutritionLogDTO),
+    });
+    const liveRecommendation = evaluateAdaptiveAdjustment(liveMetrics, goal);
+
+    return {
+      report: reportRow ? toWeeklyCoachReportDTO(reportRow) : null,
+      liveMetrics,
+      liveRecommendation,
+    };
+  }
+
+  async generateWeeklyCoachReport(
+    userId: string,
+    options?: {
+      weekStart?: string;
+      force?: boolean;
+      generateNarrative?: WeeklyCoachNarrativeFn;
+    },
+  ): Promise<WeeklyCoachReportDTO> {
+    await this.ensurePhase6Schema();
+    const { weekStartDate, weekEndDate } = getWeekBounds(options?.weekStart);
+
+    const [{ profile, goal }, metricRows, workoutRows, nutritionRows, [existingRow]] =
+      await Promise.all([
+        this.getProfileAndGoal(userId),
+        this.db
+          .select()
+          .from(bodyMetrics)
+          .where(
+            and(eq(bodyMetrics.userId, userId), lte(bodyMetrics.recordedDate, weekEndDate)),
+          )
+          .orderBy(asc(bodyMetrics.recordedDate), asc(bodyMetrics.createdAt)),
+        this.db
+          .select()
+          .from(workoutLogs)
+          .where(
+            and(
+              eq(workoutLogs.userId, userId),
+              gte(workoutLogs.loggedDate, weekStartDate),
+              lte(workoutLogs.loggedDate, weekEndDate),
+            ),
+          )
+          .orderBy(asc(workoutLogs.loggedAt)),
+        this.db
+          .select()
+          .from(nutritionLogs)
+          .where(
+            and(
+              eq(nutritionLogs.userId, userId),
+              gte(nutritionLogs.loggedDate, weekStartDate),
+              lte(nutritionLogs.loggedDate, weekEndDate),
+            ),
+          )
+          .orderBy(asc(nutritionLogs.loggedAt)),
+        this.db
+          .select()
+          .from(weeklyCoachReports)
+          .where(
+            and(
+              eq(weeklyCoachReports.userId, userId),
+              eq(weeklyCoachReports.weekStartDate, weekStartDate),
+            ),
+          )
+          .limit(1),
+      ]);
+
+    if (existingRow && !options?.force) {
+      return toWeeklyCoachReportDTO(existingRow);
+    }
+
+    const metrics = computeWeeklyCoachMetrics({
+      weekStartDate,
+      profile,
+      goal,
+      metricsUpToWeekEnd: metricRows.map(toBodyMetricDTO),
+      workoutsForWeek: workoutRows.map(toWorkoutLogDTO),
+      nutritionForWeek: nutritionRows.map(toNutritionLogDTO),
+    });
+    const recommendation = evaluateAdaptiveAdjustment(metrics, goal);
+    const narrativeFn = options?.generateNarrative ?? generateWeeklyCoachNarrative;
+    const narrative = await narrativeFn(metrics, recommendation, goal);
+
+    const now = new Date();
+    const [saved] = await this.db
+      .insert(weeklyCoachReports)
+      .values({
+        id: `coach-${crypto.randomUUID()}`,
+        userId,
+        weekStartDate,
+        weekEndDate,
+        metrics,
+        recommendation,
+        narrative,
+        appliedAt: null,
+        generatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [weeklyCoachReports.userId, weeklyCoachReports.weekStartDate],
+        set: {
+          weekEndDate,
+          metrics,
+          recommendation,
+          narrative,
+          appliedAt: null,
+          generatedAt: now,
+        },
+      })
+      .returning();
+
+    return toWeeklyCoachReportDTO(saved);
+  }
+
+  async applyWeeklyCoachRecommendation(
+    userId: string,
+    reportId: string,
+    email?: string | null,
+  ): Promise<ApplyWeeklyCoachResponse> {
+    await this.ensurePhase6Schema();
+
+    const report = await this.db.transaction(async (tx) => {
+      const [reportRow] = await tx
+        .select()
+        .from(weeklyCoachReports)
+        .where(
+          and(eq(weeklyCoachReports.id, reportId), eq(weeklyCoachReports.userId, userId)),
+        )
+        .limit(1);
+
+      if (!reportRow) {
+        throw new HTTPException(404, {
+          message: 'Weekly coach report not found.',
+        });
+      }
+
+      const [activeGoalRow] = await tx
+        .select({ id: userGoals.id })
+        .from(userGoals)
+        .where(and(eq(userGoals.userId, userId), eq(userGoals.isActive, true)))
+        .orderBy(desc(userGoals.createdAt))
+        .limit(1);
+
+      if (!activeGoalRow) {
+        throw new HTTPException(404, {
+          message: 'User profile not found. Complete onboarding first.',
+        });
+      }
+
+      if (!reportRow.recommendation.canApply) {
+        throw new HTTPException(400, {
+          message: 'Recommendation does not propose an applicable calorie adjustment.',
+        });
+      }
+
+      if (reportRow.appliedAt) {
+        return toWeeklyCoachReportDTO(reportRow);
+      }
+
+      await tx
+        .update(userGoals)
+        .set({
+          calorieAdjustment: reportRow.recommendation.suggestedCalorieAdjustment,
+        })
+        .where(eq(userGoals.id, activeGoalRow.id));
+
+      const [updatedReport] = await tx
+        .update(weeklyCoachReports)
+        .set({ appliedAt: new Date() })
+        .where(
+          and(eq(weeklyCoachReports.id, reportId), eq(weeklyCoachReports.userId, userId)),
+        )
+        .returning();
+
+      return toWeeklyCoachReportDTO(updatedReport);
+    });
+
+    const me = await this.getMe(userId, email);
+    return { report, me };
   }
 }
 

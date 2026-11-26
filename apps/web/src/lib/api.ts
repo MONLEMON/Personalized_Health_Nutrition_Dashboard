@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 import type {
   AppleHealthWebhookResponse,
+  ApplyWeeklyCoachResponse,
   BodyMetricDTO,
   CreateBatchNutritionLogsInput,
   CreateBodyMetricInput,
@@ -8,6 +9,7 @@ import type {
   CreateWorkoutLogInput,
   DashboardBootstrapResponse,
   DashboardTodayResponse,
+  GenerateWeeklyCoachInput,
   MeResponseDTO,
   MetricsTrendsResponse,
   MonthlyCalendarResponse,
@@ -21,6 +23,8 @@ import type {
   UpdateSupplementsInput,
   UpdateSupplementsResponse,
   WebhookKeyResponse,
+  WeeklyCoachReportDTO,
+  WeeklyCoachStatusResponse,
   WorkoutLogDTO,
 } from '@health-dash/shared';
 
@@ -385,4 +389,36 @@ export async function sendAppleHealthTestSync(
     },
     { skipAuth: true },
   );
+}
+
+export async function fetchWeeklyCoachStatus(
+  weekStart?: string,
+): Promise<WeeklyCoachStatusResponse> {
+  const query = weekStart ? `?weekStart=${encodeURIComponent(weekStart)}` : '';
+  return request<WeeklyCoachStatusResponse>(`/api/coach/weekly${query}`);
+}
+
+export async function generateWeeklyCoachReport(
+  input?: Partial<GenerateWeeklyCoachInput>,
+): Promise<WeeklyCoachReportDTO> {
+  return request<WeeklyCoachReportDTO>(
+    '/api/coach/weekly/generate',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        ...(input?.weekStart ? { weekStart: input.weekStart } : {}),
+        force: input?.force ?? false,
+      }),
+    },
+    { timeoutMs: AI_PARSE_TIMEOUT_MS },
+  );
+}
+
+export async function applyWeeklyCoachRecommendation(
+  reportId: string,
+): Promise<ApplyWeeklyCoachResponse> {
+  return request<ApplyWeeklyCoachResponse>('/api/coach/weekly/apply', {
+    method: 'POST',
+    body: JSON.stringify({ reportId }),
+  });
 }

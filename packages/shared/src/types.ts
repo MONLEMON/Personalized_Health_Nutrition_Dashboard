@@ -33,6 +33,19 @@ export interface UserProfileDTO {
   webhookKeyPrefix?: string | null;
 }
 
+export type WeekdayKey = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
+export type CalorieCyclingMode = 'NONE' | 'TRAINING_REST' | 'WEEKEND_BUFFER' | 'CUSTOM';
+export type CalorieCyclingDayType = 'high' | 'base' | 'low';
+
+export interface CalorieCyclingConfig {
+  enabled: boolean;
+  mode: CalorieCyclingMode;
+  dayOffsets: Record<WeekdayKey, number>;
+  trainingDayOffset: number;
+  restDayOffset: number;
+  trainingDays: WeekdayKey[];
+}
+
 export interface UserGoalDTO {
   id: string;
   userId: string;
@@ -41,6 +54,7 @@ export interface UserGoalDTO {
   proteinPerKg: number;
   fatRatio: number;
   isActive: boolean;
+  calorieCycling?: CalorieCyclingConfig | null;
 }
 
 export interface BodyMetricDTO {
@@ -104,6 +118,9 @@ export interface EnergySummary {
   activeCalories: number;
   dynamicTdee: number;
   calorieAdjustment: number;
+  cyclingOffset?: number;
+  cyclingDayType?: CalorieCyclingDayType;
+  cyclingLabel?: string | null;
   targetCalories: number;
   consumedCalories: number;
   remainingCalories: number;
@@ -121,6 +138,30 @@ export interface ReadinessSummary {
   trainingLoadLevel: 'rest' | 'light' | 'moderate' | 'high';
 }
 
+export interface WeeklyBudgetDayDTO {
+  date: string;
+  weekday: WeekdayKey;
+  dayLabel: string;
+  dayType: CalorieCyclingDayType;
+  cyclingOffset: number;
+  targetCalories: number;
+  consumedCalories: number;
+  isToday: boolean;
+  isFuture: boolean;
+}
+
+export interface WeeklyBudgetSummaryDTO {
+  weekStartDate: string;
+  weekEndDate: string;
+  weeklyTargetCalories: number;
+  weeklyConsumedCalories: number;
+  weeklyRemainingCalories: number;
+  daysElapsed: number;
+  cyclingEnabled: boolean;
+  cyclingMode: CalorieCyclingMode;
+  days: WeeklyBudgetDayDTO[];
+}
+
 export interface DashboardTodayResponse {
   date: string;
   storageMode: 'postgres' | 'memory';
@@ -133,6 +174,7 @@ export interface DashboardTodayResponse {
   workouts: WorkoutLogDTO[];
   meals: NutritionLogDTO[];
   supplements: SupplementStatusDTO[];
+  weeklyBudget?: WeeklyBudgetSummaryDTO;
 }
 
 export interface BodyTrendPoint {
@@ -240,4 +282,84 @@ export interface DashboardBootstrapResponse {
 
 export interface UpdateSupplementsResponse {
   supplementStack: SupplementConfig[];
+}
+
+export type CoachAdjustmentDirection = 'INCREASE' | 'DECREASE' | 'MAINTAIN';
+
+export type CoachRecommendationReasonCode =
+  | 'ON_TRACK'
+  | 'INSUFFICIENT_DATA'
+  | 'CUT_TOO_SLOW'
+  | 'CUT_TOO_FAST'
+  | 'BULK_TOO_SLOW'
+  | 'BULK_TOO_FAST'
+  | 'MAINTAIN_GAINING'
+  | 'MAINTAIN_LOSING';
+
+export interface WeeklyCoachMetricsDTO {
+  weekStartDate: string;
+  weekEndDate: string;
+  daysLogged: number;
+  avgIntakeCalories: number;
+  avgTargetCalories: number;
+  avgProteinG: number;
+  avgProteinTargetG: number;
+  proteinAdherencePct: number;
+  calorieAdherencePct: number;
+  totalActiveCalories: number;
+  workoutDays: number;
+  supplementAdherencePct: number;
+  weekdayAvgCalories: number | null;
+  weekendAvgCalories: number | null;
+  currentWeightMa7: number | null;
+  previousWeightMa7: number | null;
+  weightDeltaKg: number | null;
+  weightDeltaPct: number | null;
+  observedTdee: number | null;
+  estimatedTdee: number;
+  avgSleepHours: number | null;
+  avgRestingHr: number | null;
+}
+
+export interface WeeklyCoachRecommendationDTO {
+  direction: CoachAdjustmentDirection;
+  deltaKcal: number;
+  currentCalorieAdjustment: number;
+  suggestedCalorieAdjustment: number;
+  reasonCode: CoachRecommendationReasonCode;
+  canApply: boolean;
+}
+
+export interface WeeklyCoachAiNarrativeDTO {
+  weeklyScore: number;
+  headline: string;
+  summary: string;
+  wins: string[];
+  bottlenecks: string[];
+  actionPlan: string[];
+  adjustmentRationale: string;
+  source: 'GEMINI' | 'DETERMINISTIC_FALLBACK';
+}
+
+export interface WeeklyCoachReportDTO {
+  id: string;
+  userId: string;
+  weekStartDate: string;
+  weekEndDate: string;
+  metrics: WeeklyCoachMetricsDTO;
+  recommendation: WeeklyCoachRecommendationDTO;
+  narrative: WeeklyCoachAiNarrativeDTO;
+  appliedAt: string | null;
+  generatedAt: string;
+}
+
+export interface WeeklyCoachStatusResponse {
+  report: WeeklyCoachReportDTO | null;
+  liveMetrics: WeeklyCoachMetricsDTO;
+  liveRecommendation: WeeklyCoachRecommendationDTO;
+}
+
+export interface ApplyWeeklyCoachResponse {
+  report: WeeklyCoachReportDTO;
+  me: MeResponseDTO;
 }

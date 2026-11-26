@@ -31,6 +31,7 @@ import {
   QuickLogModal,
   SupplementManagerModal,
   TodayLogsCard,
+  WeeklyCoachCard,
   type MobileTab,
   type QuickLogTab,
 } from './components';
@@ -512,6 +513,7 @@ export function App() {
             goal={dashboard.goal}
             latestMetric={dashboard.latestMetric}
             profileName={dashboard.profile.name}
+            weeklyBudget={dashboard.weeklyBudget}
           />
         </div>
 
@@ -545,6 +547,26 @@ export function App() {
               }}
               onAddWorkoutClick={() => openQuickLog('workout')}
               onManageSupplementsClick={() => setSupplementManagerOpen(true)}
+            />
+          </div>
+
+          <div
+            className={`min-w-0 md:col-span-2 lg:col-span-12 ${
+              mobileTab === 'trends' ? 'block' : 'hidden md:block'
+            }`}
+          >
+            <WeeklyCoachCard
+              todayDate={dashboard.date}
+              refreshTrigger={calendarRefreshKey}
+              isDemoFallback={isDemoFallback}
+              fallbackGoal={dashboard.goal}
+              fallbackEnergy={dashboard.energy}
+              onTargetApplied={async () => {
+                if (!isDemoFallback) {
+                  await refresh();
+                }
+                bumpCalendar();
+              }}
             />
           </div>
 

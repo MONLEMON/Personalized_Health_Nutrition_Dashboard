@@ -1,4 +1,13 @@
-import type { BmrFormula, GoalType, ReadinessStatus, ReadinessSummary, Sex } from '@health-dash/shared';
+import type {
+  BmrFormula,
+  CalorieCyclingConfig,
+  CalorieCyclingDayType,
+  GoalType,
+  ReadinessStatus,
+  ReadinessSummary,
+  Sex,
+  WeekdayKey,
+} from '@health-dash/shared';
 
 export interface CalculateBmrInput {
   weightKg: number;
@@ -28,6 +37,7 @@ export interface CalculateDynamicTdeeResult {
 export interface CalculateTargetCaloriesInput {
   dynamicTdee: number;
   calorieAdjustment: number;
+  cyclingOffset?: number;
 }
 
 export interface CalculateMacroTargetsInput {
@@ -35,6 +45,13 @@ export interface CalculateMacroTargetsInput {
   weightKg: number;
   proteinPerKg: number;
   fatRatio: number;
+  baseTargetCaloriesForFat?: number;
+}
+
+export interface ResolvedCalorieCycling {
+  offset: number;
+  dayType: CalorieCyclingDayType;
+  label: string | null;
 }
 
 export interface CalculateMacroTargetsResult {
@@ -123,30 +140,119 @@ export function calculateDynamicTdee({
   return { baselineTdee, dynamicTdee };
 }
 
+const WEEKDAY_KEYS_UTC: readonly WeekdayKey[] = [
+  'sun',
+  'mon',
+  'tue',
+  'wed',
+  'thu',
+  'fri',
+  'sat',
+];
+
 /**
- * Applies goal calorie adjustment to dynamic TDEE with a safe 1200 kcal floor.
+ * Resolves a YYYY-MM-DD date string to its UTC weekday key ('mon'..'sun').
+ */
+export function getWeekdayKey(isoDate: string): WeekdayKey {
+  const [year, month, day] = isoDate.split('-').map(Number);
+  const dt = new Date(Date.UTC(year, month - 1, day));
+  return WEEKDAY_KEYS_UTC[dt.getUTCDay()];
+}
+
+function formatCyclingOffset(offset: number): string {
+  return offset >= 0 ? `+${offset}` : `${offset}`;
+}
+
+/**
+ * Resolves daily calorie & carb cycling offset, day type, and human-readable label
+ * for a given date and optional workout presence.
+ */
+export function resolveCalorieCyclingForDate(
+  config: CalorieCyclingConfig | null | undefined,
+  isoDate: string,
+  hasLoggedWorkout?: boolean,
+): ResolvedCalorieCycling {
+  if (!config || !config.enabled || config.mode === 'NONE') {
+    return { offset: 0, dayType: 'base', label: null };
+  }
+
+  const weekday = getWeekdayKey(isoDate);
+  let rawOffset = 0;
+  let isTrainingDay = false;
+
+  if (config.mode === 'TRAINING_REST') {
+    isTrainingDay = hasLoggedWorkout === true || config.trainingDays.includes(weekday);
+    rawOffset = isTrainingDay ? config.trainingDayOffset : config.restDayOffset;
+  } else {
+    rawOffset = config.dayOffsets[weekday] ?? 0;
+  }
+
+  const offset = Number.isFinite(rawOffset) ? Math.round(rawOffset) : 0;
+  const dayType: CalorieCyclingDayType =
+    offset > 0 ? 'high' : offset < 0 ? 'low' : 'base';
+
+  if (offset === 0) {
+    return { offset: 0, dayType: 'base', label: 'Base Day' };
+  }
+
+  const signedKcal = formatCyclingOffset(offset);
+  let label: string;
+
+  if (config.mode === 'TRAINING_REST') {
+    if (isTrainingDay) {
+      label =
+        offset > 0
+          ? `Training High (${signedKcal} kcal)`
+          : `Training Low (${signedKcal} kcal)`;
+    } else {
+      label =
+        offset > 0 ? `Rest High (${signedKcal} kcal)` : `Rest Low (${signedKcal} kcal)`;
+    }
+  } else if (config.mode === 'WEEKEND_BUFFER') {
+    label =
+      offset > 0
+        ? `Weekend Buffer (${signedKcal} kcal)`
+        : `Weekday Save (${signedKcal} kcal)`;
+  } else {
+    label =
+      offset > 0
+        ? `Custom High (${signedKcal} kcal)`
+        : `Custom Low (${signedKcal} kcal)`;
+  }
+
+  return { offset, dayType, label };
+}
+
+/**
+ * Applies goal calorie adjustment and optional cycling offset to dynamic TDEE with a safe 1200 kcal floor.
  */
 export function calculateTargetCalories({
   dynamicTdee,
   calorieAdjustment,
+  cyclingOffset,
 }: CalculateTargetCaloriesInput): number {
-  return Math.max(1200, Math.round(dynamicTdee + calorieAdjustment));
+  return Math.max(
+    1200,
+    Math.round(dynamicTdee + calorieAdjustment + (cyclingOffset ?? 0)),
+  );
 }
 
 /**
  * Computes daily macro targets in grams:
  * - proteinG fixed to weightKg * proteinPerKg
- * - fatG derived from fatRatio share of targetCalories
- * - carbsG fills remaining calories with a 0g floor
+ * - fatG derived from fatRatio share of baseTargetCaloriesForFat (defaults to targetCalories)
+ * - carbsG fills remaining targetCalories with a 0g floor (enabling true carb cycling)
  */
 export function calculateMacroTargets({
   targetCalories,
   weightKg,
   proteinPerKg,
   fatRatio,
+  baseTargetCaloriesForFat,
 }: CalculateMacroTargetsInput): CalculateMacroTargetsResult {
   const proteinG = Math.round(weightKg * proteinPerKg);
-  const fatG = Math.round((targetCalories * fatRatio) / 9);
+  const fatCalorieBasis = baseTargetCaloriesForFat ?? targetCalories;
+  const fatG = Math.round((fatCalorieBasis * fatRatio) / 9);
   const carbsG = Math.max(0, Math.round((targetCalories - proteinG * 4 - fatG * 9) / 4));
   return { proteinG, fatG, carbsG };
 }

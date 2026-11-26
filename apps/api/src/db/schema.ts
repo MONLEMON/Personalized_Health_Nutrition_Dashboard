@@ -11,11 +11,15 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 import type {
+  CalorieCyclingConfig,
   GoalType,
   MealType,
   NutritionLogSource,
   Sex,
   SupplementConfig,
+  WeeklyCoachAiNarrativeDTO,
+  WeeklyCoachMetricsDTO,
+  WeeklyCoachRecommendationDTO,
   WorkoutCategory,
   WorkoutIntensity,
 } from '@health-dash/shared';
@@ -45,6 +49,7 @@ export const userGoals = pgTable(
     proteinPerKg: doublePrecision('protein_per_kg').notNull(),
     fatRatio: doublePrecision('fat_ratio').notNull(),
     isActive: boolean('is_active').notNull().default(true),
+    calorieCyclingConfig: jsonb('calorie_cycling_config').$type<CalorieCyclingConfig | null>(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [index('user_goals_user_active_idx').on(table.userId, table.isActive)],
@@ -132,4 +137,29 @@ export const syncLogs = pgTable(
     syncedAt: timestamp('synced_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [index('sync_logs_user_synced_idx').on(table.userId, table.syncedAt)],
+);
+
+export const weeklyCoachReports = pgTable(
+  'weekly_coach_reports',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => userProfiles.id, { onDelete: 'cascade' }),
+    weekStartDate: text('week_start_date').notNull(),
+    weekEndDate: text('week_end_date').notNull(),
+    metrics: jsonb('metrics').$type<WeeklyCoachMetricsDTO>().notNull(),
+    recommendation: jsonb('recommendation')
+      .$type<WeeklyCoachRecommendationDTO>()
+      .notNull(),
+    narrative: jsonb('narrative').$type<WeeklyCoachAiNarrativeDTO>().notNull(),
+    appliedAt: timestamp('applied_at', { withTimezone: true }),
+    generatedAt: timestamp('generated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('weekly_coach_reports_user_week_uniq').on(
+      table.userId,
+      table.weekStartDate,
+    ),
+  ],
 );
