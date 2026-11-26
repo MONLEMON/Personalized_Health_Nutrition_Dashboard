@@ -13,6 +13,7 @@ import {
   Loader2,
   Pill,
   Plus,
+  SlidersHorizontal,
   Sparkles,
   Trash2,
   Trophy,
@@ -28,6 +29,7 @@ export interface ActivitySupplementCardProps {
   togglingKey?: string | null;
   onDeleteWorkout?: (id: string) => void | Promise<void>;
   onAddWorkoutClick?: () => void;
+  onManageSupplementsClick?: () => void;
 }
 
 const CATEGORY_ICONS: Record<WorkoutCategory, typeof Dumbbell> = {
@@ -52,6 +54,7 @@ export function ActivitySupplementCard({
   togglingKey = null,
   onDeleteWorkout,
   onAddWorkoutClick,
+  onManageSupplementsClick,
 }: ActivitySupplementCardProps) {
   const takenCount = supplements.filter((s) => s.taken).length;
 
@@ -154,19 +157,46 @@ export function ActivitySupplementCard({
 
         {/* Supplement Pill Tracker */}
         <div className="border-t border-white/5 pt-4">
-          <div className="mb-2.5 flex items-center justify-between">
+          <div className="mb-2.5 flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5">
               <Pill className="h-3.5 w-3.5 text-[#2EE6A6]" />
               <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                Supplement Stack
+                Daily Supplement Stack
               </h3>
             </div>
-            <span className="tabular-nums text-xs font-medium text-slate-300">
-              {takenCount} / {supplements.length} taken
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="tabular-nums text-xs font-medium text-slate-300">
+                {takenCount} / {supplements.length} taken
+              </span>
+              {onManageSupplementsClick ? (
+                <button
+                  type="button"
+                  onClick={onManageSupplementsClick}
+                  className="inline-flex min-h-[32px] items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-slate-200 transition hover:border-[#2EE6A6]/40 hover:bg-[#2EE6A6]/10 hover:text-[#2EE6A6]"
+                >
+                  <SlidersHorizontal className="h-3 w-3" />
+                  <span>Manage</span>
+                </button>
+              ) : null}
+            </div>
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          {supplements.length === 0 ? (
+            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-white/10 bg-[#0F131C]/50 px-4 py-4 text-center">
+              <p className="text-xs text-slate-400">No supplements configured yet.</p>
+              {onManageSupplementsClick ? (
+                <button
+                  type="button"
+                  onClick={onManageSupplementsClick}
+                  className="mt-2 inline-flex min-h-[36px] items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-white/15"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Customize Stack
+                </button>
+              ) : null}
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-2">
             {supplements.map((supp) => {
               const isToggling = togglingKey === supp.key;
               return (
@@ -207,7 +237,8 @@ export function ActivitySupplementCard({
                 </button>
               );
             })}
-          </div>
+            </div>
+          )}
         </div>
       </div>
     </BentoCard>

@@ -19,6 +19,7 @@ import {
   Dumbbell,
   Loader2,
   Plus,
+  RotateCcw,
   Sparkles,
   Trash2,
   Utensils,
@@ -74,6 +75,14 @@ const AI_SAMPLE_PROMPTS: string[] = [
   'ข้าวสวย 200g อกไก่ย่าง ไข่ต้ม 2 ฟอง',
   'กะเพราหมูสับ ไข่ดาว',
   'Whey Isolate 1 scoop + กล้วย 1 ลูก',
+];
+
+const AI_ACCURACY_HINTS: string[] = [
+  'ไม่ใส่น้ำมัน',
+  'ข้าว 1 ทัพพี (~65g)',
+  'กินหมดทั้งซอง/ขวด',
+  'หวานน้อย 25%',
+  'ชั่งน้ำหนักสุก',
 ];
 
 const CONFIDENCE_BADGE: Record<NutritionConfidence, { label: string; classes: string }> = {
@@ -373,7 +382,7 @@ export function QuickLogModal({
     setError(null);
     setResizingImage(true);
     try {
-      const resized = await resizeImageForUpload(selectedFile, 1024, 0.8);
+      const resized = await resizeImageForUpload(selectedFile, 1280, 0.85);
       replaceResizedImage(resized);
     } catch (err) {
       setError(
@@ -571,17 +580,30 @@ export function QuickLogModal({
           <div className="min-w-0 flex-1 space-y-2">
             <p className="leading-relaxed">{error}</p>
             {activeTab === 'ai' && (
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab('meal');
-                  setError(null);
-                }}
-                className="inline-flex min-h-[36px] items-center gap-1.5 rounded-xl border border-white/15 bg-white/[0.06] px-3 py-1.5 text-xs font-semibold text-white transition hover:border-[#2EE6A6]/40 hover:bg-[#2EE6A6]/15 hover:text-[#2EE6A6]"
-              >
-                <Utensils className="h-3.5 w-3.5 text-[#2EE6A6]" />
-                Switch to Manual Tab
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                {aiStep === 'input' ? (
+                  <button
+                    type="button"
+                    disabled={analyzing || resizingImage || (!aiText.trim() && !resizedImage)}
+                    onClick={() => void handleAnalyzeWithAI()}
+                    className="inline-flex min-h-[38px] items-center gap-1.5 rounded-xl border border-[#38BDF8]/35 bg-[#38BDF8]/15 px-3 py-1.5 text-xs font-semibold text-[#38BDF8] transition hover:bg-[#38BDF8]/25 disabled:opacity-50"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    Retry AI
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('meal');
+                    setError(null);
+                  }}
+                  className="inline-flex min-h-[38px] items-center gap-1.5 rounded-xl border border-white/15 bg-white/[0.06] px-3 py-1.5 text-xs font-semibold text-white transition hover:border-[#2EE6A6]/40 hover:bg-[#2EE6A6]/15 hover:text-[#2EE6A6]"
+                >
+                  <Utensils className="h-3.5 w-3.5 text-[#2EE6A6]" />
+                  Switch to Manual Tab
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -733,6 +755,31 @@ export function QuickLogModal({
                     placeholder="เช่น ข้าวสวย 200 กรัม อกไก่ย่าง 1 ชิ้น ไข่ต้ม 2 ฟอง หรืออัปโหลดรูปอาหาร/ฉลากโภชนาการ..."
                     className="min-h-[96px] w-full resize-y rounded-2xl border border-white/10 bg-[#0A0C10]/80 px-3.5 py-2.5 text-base leading-relaxed text-white placeholder:text-slate-500 focus:border-[#2EE6A6]/60 focus:outline-none focus:ring-1 focus:ring-[#2EE6A6]/40 sm:text-sm"
                   />
+
+                  {/* 1-tap Accuracy Hint chips */}
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                      Accuracy hints:
+                    </span>
+                    {AI_ACCURACY_HINTS.map((hint) => (
+                      <button
+                        key={hint}
+                        type="button"
+                        onClick={() => {
+                          setError(null);
+                          setAiText((prev) => {
+                            const trimmed = prev.trim();
+                            if (!trimmed) return hint;
+                            if (trimmed.includes(hint)) return prev;
+                            return `${trimmed}, ${hint}`;
+                          });
+                        }}
+                        className="min-h-[34px] rounded-full border border-[#38BDF8]/25 bg-[#38BDF8]/10 px-2.5 py-1 text-[11px] font-medium text-[#38BDF8] transition hover:border-[#38BDF8]/50 hover:bg-[#38BDF8]/20"
+                      >
+                        + {hint}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 {/* 1-tap Thai/English sample prompt chips */}
@@ -780,7 +827,7 @@ export function QuickLogModal({
                       {resizingImage ? (
                         <>
                           <Loader2 className="h-4 w-4 animate-spin text-[#38BDF8]" />
-                          <span>Optimizing photo (1024px JPEG)…</span>
+                          <span>Optimizing photo (1280px JPEG)…</span>
                         </>
                       ) : (
                         <>

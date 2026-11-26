@@ -161,6 +161,47 @@ export const WebhookKeyResponseSchema = z.object({
   created_at: z.string(),
 });
 
+export const SupplementConfigSchema = z.object({
+  key: z
+    .string()
+    .trim()
+    .min(1, 'Supplement key is required')
+    .max(64)
+    .regex(
+      /^[a-z0-9_-]+$/,
+      'Key must contain lowercase letters, numbers, hyphens, or underscores',
+    ),
+  name: z.string().trim().min(1, 'Supplement name is required').max(80),
+  dosage: z.string().trim().min(1, 'Dosage is required').max(60),
+  timing: z.string().trim().min(1, 'Timing is required').max(60),
+});
+
+export const UpdateSupplementsSchema = z.object({
+  supplements: z
+    .array(SupplementConfigSchema)
+    .max(30)
+    .refine(
+      (items) => new Set(items.map((i) => i.key)).size === items.length,
+      'Supplement keys must be unique',
+    ),
+});
+
+export const UpdateProfileSettingsSchema = z.object({
+  name: z.string().trim().min(1, 'Name is required').max(100),
+  gender: z.enum(['male', 'female', 'other']),
+  birth_date: z.string().regex(isoDateRegex, 'Expected YYYY-MM-DD'),
+  height_cm: z.coerce.number().min(80).max(260),
+  baseline_activity_multiplier: z.coerce.number().min(1.1).max(2.2),
+  goal_type: z.enum(['CUT', 'MAINTAIN', 'BULK']),
+  calorie_adjustment: z.coerce.number().int().min(-1500).max(1500),
+  protein_per_kg: z.coerce.number().min(0.8).max(3.5),
+  fat_ratio: z.coerce.number().min(0.15).max(0.5),
+});
+
+export const calendarQuerySchema = z.object({
+  month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Expected YYYY-MM').optional(),
+});
+
 export type CreateNutritionLogInput = z.infer<typeof createNutritionLogSchema>;
 export type CreateWorkoutLogInput = z.infer<typeof createWorkoutLogSchema>;
 export type ToggleSupplementInput = z.infer<typeof toggleSupplementSchema>;
@@ -174,3 +215,6 @@ export type AppleHealthWebhookPayload = z.infer<typeof AppleHealthWebhookPayload
 export type SyncStatusDTO = z.infer<typeof SyncStatusSchema>;
 export type OnboardingProfileInput = z.infer<typeof OnboardingProfileSchema>;
 export type WebhookKeyResponse = z.infer<typeof WebhookKeyResponseSchema>;
+export type UpdateSupplementsInput = z.infer<typeof UpdateSupplementsSchema>;
+export type UpdateProfileSettingsInput = z.infer<typeof UpdateProfileSettingsSchema>;
+export type CalendarQueryInput = z.infer<typeof calendarQuerySchema>;

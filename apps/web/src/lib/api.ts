@@ -6,15 +6,20 @@ import type {
   CreateBodyMetricInput,
   CreateNutritionLogInput,
   CreateWorkoutLogInput,
+  DashboardBootstrapResponse,
   DashboardTodayResponse,
   MeResponseDTO,
   MetricsTrendsResponse,
+  MonthlyCalendarResponse,
   NutritionLogDTO,
   NutritionLogSource,
   OnboardingProfileInput,
   ParseNutritionResponse,
   SyncStatusDTO,
   ToggleSupplementInput,
+  UpdateProfileSettingsInput,
+  UpdateSupplementsInput,
+  UpdateSupplementsResponse,
   WebhookKeyResponse,
   WorkoutLogDTO,
 } from '@health-dash/shared';
@@ -85,8 +90,19 @@ async function parseApiError(response: Response): Promise<ApiError> {
   return new ApiError(response.status, message, code);
 }
 
-interface RequestOptions {
+export interface RequestOptions {
   skipAuth?: boolean;
+  timeoutMs?: number;
+}
+
+const DEFAULT_TIMEOUT_MS = 15_000;
+const AI_PARSE_TIMEOUT_MS = 28_000;
+
+function isAbortError(err: unknown): boolean {
+  return (
+    (err instanceof DOMException && err.name === 'AbortError') ||
+    (err instanceof Error && err.name === 'AbortError')
+  );
 }
 
 async function request<T>(
@@ -106,10 +122,53 @@ async function request<T>(
     }
   }
 
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers,
-  });
+  const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const controller = new AbortController();
+  const externalSignal = init?.signal;
+
+  const onExternalAbort = () => {
+    controller.abort();
+  };
+
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      controller.abort();
+    } else {
+      externalSignal.addEventListener('abort', onExternalAbort, { once: true });
+    }
+  }
+
+  const timeoutId =
+    timeoutMs > 0
+      ? globalThis.setTimeout(() => {
+          controller.abort();
+        }, timeoutMs)
+      : null;
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      headers,
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (isAbortError(err) || controller.signal.aborted) {
+      throw new ApiError(
+        408,
+        'Request timed out. Please check your connection and try again.',
+        'TIMEOUT',
+      );
+    }
+    throw err;
+  } finally {
+    if (timeoutId !== null) {
+      globalThis.clearTimeout(timeoutId);
+    }
+    if (externalSignal) {
+      externalSignal.removeEventListener('abort', onExternalAbort);
+    }
+  }
 
   if (!response.ok) {
     if (!options?.skipAuth && response.status === 401) {
@@ -131,6 +190,37 @@ async function request<T>(
 
 export async function fetchMe(): Promise<MeResponseDTO> {
   return request<MeResponseDTO>('/api/me');
+}
+
+export async function fetchDashboardBootstrap(
+  days: number = 30,
+): Promise<DashboardBootstrapResponse> {
+  return request<DashboardBootstrapResponse>(
+    `/api/dashboard/bootstrap?days=${encodeURIComponent(String(days))}`,
+  );
+}
+
+export async function fetchMonthlyCalendar(month?: string): Promise<MonthlyCalendarResponse> {
+  const query = month ? `?month=${encodeURIComponent(month)}` : '';
+  return request<MonthlyCalendarResponse>(`/api/dashboard/calendar${query}`);
+}
+
+export async function updateSupplementStack(
+  input: UpdateSupplementsInput,
+): Promise<UpdateSupplementsResponse> {
+  return request<UpdateSupplementsResponse>('/api/settings/supplements', {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateProfileSettings(
+  input: UpdateProfileSettingsInput,
+): Promise<MeResponseDTO> {
+  return request<MeResponseDTO>('/api/settings/profile', {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
 }
 
 export async function submitOnboarding(input: OnboardingProfileInput): Promise<MeResponseDTO> {
@@ -224,12 +314,32 @@ export async function parseNutritionWithAI(input: {
     headers.Authorization = `Bearer ${token}`;
   }
 
-  // Do not manually set Content-Type so the browser generates the multipart boundary
-  const response = await fetch(`${API_BASE}/api/nutrition/parse`, {
-    method: 'POST',
-    headers,
-    body: formData,
-  });
+  const controller = new AbortController();
+  const timeoutId = globalThis.setTimeout(() => {
+    controller.abort();
+  }, AI_PARSE_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    // Do not manually set Content-Type so the browser generates the multipart boundary
+    response = await fetch(`${API_BASE}/api/nutrition/parse`, {
+      method: 'POST',
+      headers,
+      body: formData,
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (isAbortError(err) || controller.signal.aborted) {
+      throw new ApiError(
+        408,
+        'AI analysis timed out (วิเคราะห์นานเกินไป) — Tap Retry AI or switch to Manual mode.',
+        'TIMEOUT',
+      );
+    }
+    throw err;
+  } finally {
+    globalThis.clearTimeout(timeoutId);
+  }
 
   if (!response.ok) {
     if (response.status === 401) {

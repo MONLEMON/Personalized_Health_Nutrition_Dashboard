@@ -8,18 +8,21 @@ import {
 import {
   ParseNutritionResponseSchema,
   type ParseNutritionResponse,
+  type ParsedFoodItem,
 } from '@health-dash/shared';
 import { loadRootEnv } from '../db/load-env';
 
 export const MAX_NUTRITION_IMAGE_BYTES = 5 * 1024 * 1024;
 export const DEFAULT_GEMINI_MODEL = 'gemini-3.8-flash';
 export const FALLBACK_GEMINI_MODELS = [
+  'gemini-flash-latest',
   'gemini-flash-lite-latest',
   'gemini-3.5-flash-lite',
 ] as const;
+export const DEFAULT_ATTEMPT_TIMEOUT_MS = 18_000;
 
 const RETRYABLE_MODEL_ERROR_RE =
-  /\b(404|429|503)\b|NOT_FOUND|UNAVAILABLE|RESOURCE_EXHAUSTED|high demand|overloaded|no longer available/i;
+  /\b(404|429|500|502|503|504)\b|NOT_FOUND|UNAVAILABLE|RESOURCE_EXHAUSTED|INTERNAL|DEADLINE_EXCEEDED|timeout|timed out|ETIMEDOUT|ECONNRESET|fetch failed|high demand|overloaded|no longer available/i;
 
 function isRetryableModelError(message: string): boolean {
   return RETRYABLE_MODEL_ERROR_RE.test(message);
@@ -75,44 +78,53 @@ export type GeminiGenerateContentFn = (params: {
 export interface ParseNutritionOptions {
   apiKey?: string;
   model?: string;
+  attemptTimeoutMs?: number;
   generateContent?: GeminiGenerateContentFn;
 }
 
-const NUTRITION_SYSTEM_INSTRUCTION = `You are an expert sports nutritionist, registered dietitian, and computer-vision food analyst specializing in Thai cuisine, clean/fitness meals, dietary supplements, and Nutrition Facts label extraction.
+const NUTRITION_SYSTEM_INSTRUCTION = `You are an expert sports nutritionist, registered dietitian, and computer-vision food analyst specializing in Thai cuisine, clean/fitness meals, dietary supplements, and Thai/English Nutrition Facts label extraction.
 
-Your job is to analyze the user's text description and/or photo (meal plate or Thai/English Nutrition Facts label) and return accurate, structured nutritional estimates in JSON matching the required schema.
+Your job is to analyze the user's text description and/or photo (meal plate or Nutrition Facts label) and return accurate, structured nutritional estimates in JSON matching the required schema.
 
-Domain Expertise & Estimation Rules:
+Strict Macro-Calorie Self-Consistency Rule:
+- Ensure total calories for EVERY item stay internally consistent with Atwater energy factors: calories ≈ (4 * protein_g) + (4 * carbs_g) + (9 * fat_g) within ±15% (unless a printed Nutrition Facts label explicitly reports lower net calories due to dietary fiber or sugar alcohols).
+- Never output mismatched zero-calorie items when protein, carbs, or fat are present.
+
+Calibration Anchors (Thai Cuisine, Clean Meals, Beverages & Labels):
 1. Thai Cuisine & Local Dishes:
-   - Accurately estimate standard Thai portions, cooking oils, coconut milk, and sauces:
-     - ข้าวราดแกง (rice with curries/stir-fries): separate steamed rice from curry/topping when identifiable; account for coconut milk in green/red/panang curries.
-     - ผัดกะเพรา (holy basil stir-fry): distinguish chicken/lean pork vs regular minced pork and cooking oil; separate ไข่ดาว (fried egg, ~110-140 kcal) when included.
-     - ส้มตำ (papaya salad: ไทย/ปูปลาร้า): typically lower calorie & low fat, account for peanuts/dried shrimp/palm sugar in ตำไทย.
-     - ก๋วยเตี๋ยว (noodle soups & dry noodles): account for noodle type (เส้นเล็ก, เส้นใหญ่, บะหมี่, วุ้นเส้น), meat/meatballs, and added oil/garlic in dry bowls.
-     - ข้าวมันไก่ (Hainanese chicken rice): account for chicken-fat-cooked rice (~320-380 kcal/portion) vs boiled/grilled chicken breast.
-     - ต้มยำ (Tom Yum น้ำใส vs น้ำข้น with evaporated milk/chili paste).
-     - หมูปิ้ง (grilled pork skewers with marinade sugar/fat, ~90-130 kcal per skewer) and ข้าวเหนียว (sticky rice).
-     - ชานมไข่มุก (bubble milk tea): account for milk, syrup/sugar level, and tapioca pearls (~300-480 kcal per cup unless sugar-free specified).
+   - ข้าวสวย (steamed jasmine rice): 1 ทัพพี ≈ 60-65g ≈ 80 kcal (1.7g P, 17g C, 0.1g F); 1 จาน ≈ 180-200g ≈ 240-260 kcal (5.2g P, 56g C, 0.4g F).
+   - กะเพราหมูสับ (ไม่รวมข้าว): 1 ที่ ≈ 320-380 kcal depending on fat & oil — distinguish lean/low-oil prep (~260-310 kcal) vs regular street-style generous oil (~350-420 kcal); separate steamed rice and fried egg as their own items when present.
+   - ไข่ดาว (fried egg): 1 ฟอง ≈ 115-135 kcal (6.3g P, 0.6g C, 9.5-11g F including cooking oil).
+   - ข้าวราดแกง (rice with curries/stir-fries): separate steamed rice from curry/topping whenever identifiable; account for coconut milk in green/red/panang curries (~250-400 kcal per curry serving).
+   - ส้มตำ (papaya salad: ไทย/ปูปลาร้า): typically lower calorie & low fat (~100-180 kcal), account for peanuts/dried shrimp/palm sugar in ตำไทย.
+   - ก๋วยเตี๋ยว (noodle soups & dry noodles): account for noodle type (เส้นเล็ก, เส้นใหญ่, บะหมี่, วุ้นเส้น), meat/meatballs, and added oil/garlic in dry bowls (~350-520 kcal).
+   - ข้าวมันไก่ (Hainanese chicken rice): account for chicken-fat-cooked rice (~320-380 kcal/portion) vs boiled chicken breast (~180-240 kcal) or fried chicken (ข้าวมันไก่ทอด, higher fat).
+   - ต้มยำ (Tom Yum น้ำใส ~150-220 kcal vs น้ำข้น with evaporated milk/chili paste ~260-380 kcal).
+   - หมูปิ้ง (grilled pork skewers with marinade sugar/fat, ~90-130 kcal per skewer) and ข้าวเหนียว (~160-220 kcal per 100g).
+   - Thai iced beverages by sugar level (16-22 oz glass):
+     - ชาไทยเย็น / กาแฟเย็นใส่นม / ชานม: หวานปกติ 100% ≈ 280-350 kcal; หวานน้อย 50% ≈ 200-250 kcal; หวานน้อย 25% ≈ 150-190 kcal; ไม่หวาน 0% ≈ 70-120 kcal (milk only).
+     - อเมริกาโน่เย็นไม่หวาน ≈ 5-15 kcal.
+     - ชานมไข่มุก (bubble milk tea): ~300-480 kcal per cup depending on sugar level and tapioca pearls.
 2. Clean & Fitness Meals:
-   - ข้าวสวย + อกไก่ย่าง / อกไก่ปั่น (steamed jasmine rice ~130 kcal / 28g carbs per 100g cooked; grilled chicken breast ~165 kcal / 31g protein per 100g cooked).
-   - ไข่ต้ม (whole boiled egg ~72 kcal, 6.3g P, 5g F; distinguish egg whites if specified).
-   - แซลมอน (grilled/pan-seared salmon ~200-230 kcal per 100g, high protein and omega-3 fat).
-   - กรีกโยเกิร์ต (plain Greek yogurt vs sweetened/high-fat varieties) and ข้าวโอ๊ต (rolled oats dry ~380 kcal / 100g).
+   - อกไก่ย่างสุก (grilled chicken breast, cooked): 100g ≈ 165 kcal (31g P, 0g C, 3.6g F); note raw vs cooked weight clearly when user specifies raw or cooked ("ชั่งน้ำหนักสุก" vs "ชั่งดิบ").
+   - ไข่ต้ม (boiled whole egg): 1 ฟอง ≈ 72 kcal (6.3g P, 0.6g C, 5g F); distinguish egg whites (~17 kcal, 3.6g P per egg white) if specified.
+   - แซลมอน (grilled/pan-seared salmon): 100g ≈ 200-230 kcal (~20-22g P, 12-15g F).
+   - กรีกโยเกิร์ต (plain unsweetened vs sweetened varieties) and ข้าวโอ๊ต (rolled oats dry ~380 kcal / 100g).
 3. Supplements:
    - Whey Isolate (~110-120 kcal, 25-27g P per 30g scoop) vs Whey Concentrate (~120-135 kcal, 22-24g P per scoop).
    - Creatine Monohydrate (0 kcal, 0g macros unless stated with juice/carbs).
    - Mass Gainer (dense calories and carbs per serving; verify full serving vs single scoop).
    - Protein Bars (typically ~180-240 kcal, 15-22g P; prefer visible label values if shown).
-4. Reading Nutrition Facts Labels from Photos (Thai "ข้อมูลโภชนาการ" & English Labels):
-   - Carefully check "หนึ่งหน่วยบริโภค / Serving Size" and "จำนวนหน่วยบริโภคต่อภาชนะ / Servings Per Container".
-   - If the user says they consumed the whole package/bottle (e.g. "หมดขวด", "ทั้งซอง", "whole pack") or it is a single-serving bottle/bar, compute totals for the consumed amount and state the multiplier in portion_desc.
-   - Otherwise, report 1 serving clearly in portion_desc (e.g. "1 serving (30g)" or "1 ขวด (350ml, 1 หน่วยบริโภค)").
-   - Read พลังงานทั้งหมด (Calories), โปรตีน (Protein), คาร์โบไฮเดรตทั้งหมด (Carbs), and ไขมันทั้งหมด (Fat) accurately.
+4. Reading Thai 7-Eleven & Nutrition Facts Labels ("ข้อมูลโภชนาการ"):
+   - Carefully read "หนึ่งหน่วยบริโภค / Serving Size" AND "จำนวนหน่วยบริโภคต่อภาชนะ / Servings Per Container".
+   - If the user states they consumed the whole package/bottle (e.g. "ทั้งซอง", "หมดขวด", "หมดกล่อง", "หมดทั้งซอง/ขวด", "whole pack") OR it is clearly a single-serving bottle/bar consumed whole, multiply พลังงานทั้งหมด (Calories) and all macros by Servings Per Container and state the multiplier clearly in portion_desc (e.g., "ทั้งซอง (2 หน่วยบริโภค, 60g)").
+   - Otherwise, report 1 serving clearly in portion_desc (e.g. "1 หน่วยบริโภค (30g)" or "1 ขวด (350ml, 1 หน่วยบริโภค)").
+   - Extract พลังงานทั้งหมด (Calories), โปรตีน (Protein), คาร์โบไฮเดรตทั้งหมด (Carbs), and ไขมันทั้งหมด (Fat) accurately.
 
 Formatting & Output Rules:
-- Split multi-item meals into distinct items inside "items" whenever components are recognizable (e.g. "ข้าวสวย", "อกไก่ย่าง", "ไข่ต้ม" as separate items).
+- Split multi-item meals into distinct items inside "items" whenever components are recognizable (e.g. "ข้าวสวย", "กะเพราหมูสับ", "ไข่ดาว" as separate items).
 - Match input language naturally: use natural Thai food_name for Thai text/labels, natural English for English inputs, and clean mixed naming when the user mixes languages.
-- Keep portion_desc realistic and specific (e.g. "1 จาน (~200g)", "2 ฟอง", "1 scoop (32g)").
+- Keep portion_desc realistic, explicit, and include assumed weights and cooking oil when estimated (e.g. "1 จาน (~200g)", "1 ที่ (หมูสับ ~120g + น้ำมัน ~1 ชต.)", "1 ชิ้น (~150g สุก)", "2 ฟอง (ทอดน้ำมัน)").
 - All macro numbers (calories, protein_g, carbs_g, fat_g) must be non-negative finite numbers rounded cleanly (calories to whole kcal, macros to 1 decimal place max).
 - Assign confidence honestly:
   - "HIGH": clear Nutrition Facts label, exact weighed gram amounts, or standardized supplement scoop.
@@ -184,6 +196,54 @@ const PARSE_NUTRITION_RESPONSE_SCHEMA: Schema = {
 
 function roundToOneDecimal(value: number): number {
   return Math.round(value * 10) / 10;
+}
+
+/**
+ * Normalizes precision on a parsed nutrition item and reconciles glaring
+ * calorie vs. Atwater macro mismatches (>30% divergence or 0 kcal with >15 macro kcal).
+ */
+export function reconcileNutritionItem(item: ParsedFoodItem): ParsedFoodItem {
+  let calories = Math.max(0, Math.round(item.calories));
+  const protein_g = Math.max(0, roundToOneDecimal(item.protein_g));
+  const carbs_g = Math.max(0, roundToOneDecimal(item.carbs_g));
+  const fat_g = Math.max(0, roundToOneDecimal(item.fat_g));
+
+  const macroKcal = Math.round(protein_g * 4 + carbs_g * 4 + fat_g * 9);
+  if (
+    (calories === 0 && macroKcal > 15) ||
+    (macroKcal > 0 &&
+      calories > 0 &&
+      Math.abs(calories - macroKcal) / Math.max(calories, macroKcal) > 0.3)
+  ) {
+    calories = macroKcal;
+  }
+
+  return {
+    food_name: item.food_name,
+    portion_desc: item.portion_desc,
+    calories,
+    protein_g,
+    carbs_g,
+    fat_g,
+    confidence: item.confidence,
+  };
+}
+
+async function runWithTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  let timerId: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_resolve, reject) => {
+    timerId = setTimeout(() => {
+      reject(new Error('TIMEOUT: Gemini request timed out'));
+    }, timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timerId !== undefined) {
+      clearTimeout(timerId);
+    }
+  }
 }
 
 function sanitizeUpstreamMessage(rawMessage: string, apiKey: string): string {
@@ -283,30 +343,41 @@ export async function parseNutritionWithGemini(
     systemInstruction: NUTRITION_SYSTEM_INSTRUCTION,
     responseMimeType: 'application/json',
     responseSchema: PARSE_NUTRITION_RESPONSE_SCHEMA,
-    temperature: 0.2,
+    temperature: 0.1,
+    maxOutputTokens: 2048,
   };
 
-  let rawResponseText: string | undefined;
+  const attemptTimeoutMs =
+    typeof options?.attemptTimeoutMs === 'number' &&
+    Number.isFinite(options.attemptTimeoutMs) &&
+    options.attemptTimeoutMs > 0
+      ? options.attemptTimeoutMs
+      : DEFAULT_ATTEMPT_TIMEOUT_MS;
+
   const ai = options?.generateContent
     ? null
     : new GoogleGenAI({ apiKey: resolvedApiKey });
 
+  let validatedData: ParseNutritionResponse | null = null;
+  let lastInvalidResponseError: AiNutritionError | null = null;
+
   for (let i = 0; i < candidateModels.length; i++) {
     const model = candidateModels[i];
     const hasNextCandidate = i < candidateModels.length - 1;
+    let rawResponseText: string | undefined;
+
     try {
-      if (options?.generateContent) {
-        const result = await options.generateContent({ model, contents: parts, config });
-        rawResponseText = result.text;
-      } else if (ai) {
-        const result = await ai.models.generateContent({
-          model,
-          contents: parts,
-          config,
-        });
-        rawResponseText = result.text;
-      }
-      break;
+      const requestPromise = options?.generateContent
+        ? options.generateContent({ model, contents: parts, config })
+        : ai!.models.generateContent({
+            model,
+            contents: parts,
+            config,
+          });
+      requestPromise.catch(() => {});
+
+      const result = await runWithTimeout(requestPromise, attemptTimeoutMs);
+      rawResponseText = result.text;
     } catch (error) {
       if (error instanceof AiNutritionError) {
         throw error;
@@ -321,46 +392,64 @@ export async function parseNutritionWithGemini(
         `Failed to analyze nutrition via Gemini AI: ${sanitizeUpstreamMessage(rawMsg, resolvedApiKey)}`,
       );
     }
+
+    if (!rawResponseText || !rawResponseText.trim()) {
+      lastInvalidResponseError = new AiNutritionError(
+        502,
+        'INVALID_AI_RESPONSE',
+        'Gemini AI returned an empty response. Please try again or switch to Manual mode.',
+      );
+      if (hasNextCandidate) {
+        continue;
+      }
+      throw lastInvalidResponseError;
+    }
+
+    let parsedJson: unknown;
+    try {
+      parsedJson = extractJsonPayload(rawResponseText);
+    } catch {
+      lastInvalidResponseError = new AiNutritionError(
+        502,
+        'INVALID_AI_RESPONSE',
+        'Gemini AI returned malformed JSON. Please try again or switch to Manual mode.',
+      );
+      if (hasNextCandidate) {
+        continue;
+      }
+      throw lastInvalidResponseError;
+    }
+
+    const validated = ParseNutritionResponseSchema.safeParse(parsedJson);
+    if (!validated.success) {
+      lastInvalidResponseError = new AiNutritionError(
+        502,
+        'INVALID_AI_RESPONSE',
+        'Gemini AI response did not match the expected nutrition schema. Please retry or switch to Manual mode.',
+      );
+      if (hasNextCandidate) {
+        continue;
+      }
+      throw lastInvalidResponseError;
+    }
+
+    validatedData = validated.data;
+    break;
   }
 
-  if (!rawResponseText || !rawResponseText.trim()) {
-    throw new AiNutritionError(
-      502,
-      'INVALID_AI_RESPONSE',
-      'Gemini AI returned an empty response. Please try again or switch to Manual mode.',
-    );
-  }
-
-  let parsedJson: unknown;
-  try {
-    parsedJson = extractJsonPayload(rawResponseText);
-  } catch {
-    throw new AiNutritionError(
-      502,
-      'INVALID_AI_RESPONSE',
-      'Gemini AI returned malformed JSON. Please try again or switch to Manual mode.',
-    );
-  }
-
-  const validated = ParseNutritionResponseSchema.safeParse(parsedJson);
-  if (!validated.success) {
-    throw new AiNutritionError(
-      502,
-      'INVALID_AI_RESPONSE',
-      'Gemini AI response did not match the expected nutrition schema. Please retry or switch to Manual mode.',
+  if (!validatedData) {
+    throw (
+      lastInvalidResponseError ??
+      new AiNutritionError(
+        502,
+        'INVALID_AI_RESPONSE',
+        'Gemini AI returned an invalid response. Please try again or switch to Manual mode.',
+      )
     );
   }
 
   return {
-    suggested_meal_type: validated.data.suggested_meal_type,
-    items: validated.data.items.map((item) => ({
-      food_name: item.food_name,
-      portion_desc: item.portion_desc,
-      calories: Math.max(0, Math.round(item.calories)),
-      protein_g: Math.max(0, roundToOneDecimal(item.protein_g)),
-      carbs_g: Math.max(0, roundToOneDecimal(item.carbs_g)),
-      fat_g: Math.max(0, roundToOneDecimal(item.fat_g)),
-      confidence: item.confidence,
-    })),
+    suggested_meal_type: validatedData.suggested_meal_type,
+    items: validatedData.items.map(reconcileNutritionItem),
   };
 }

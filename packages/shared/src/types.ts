@@ -1,3 +1,5 @@
+import type { SyncStatusDTO } from './schemas';
+
 export type Sex = 'male' | 'female' | 'other';
 export type GoalType = 'CUT' | 'MAINTAIN' | 'BULK';
 export type BmrFormula = 'katch_mcardle' | 'mifflin_st_jeor';
@@ -183,4 +185,59 @@ export interface MeResponseDTO {
   profile: UserProfileDTO | null;
   goal: UserGoalDTO | null;
   webhookKey: WebhookKeyStatusDTO;
+}
+
+export type CalendarDayStatus = 'optimal' | 'moderate' | 'overload' | 'empty';
+
+export interface CalendarDaySummaryDTO {
+  date: string;
+  hasData: boolean;
+  status: CalendarDayStatus;
+  consumedCalories: number;
+  targetCalories: number;
+  dynamicTdee: number;
+  activeCalories: number;
+  proteinG: number;
+  proteinTargetG: number;
+  carbsG: number;
+  fatG: number;
+  mealCount: number;
+  workoutCount: number;
+  supplementsTaken: number;
+  supplementsTotal: number;
+  weightKg: number | null;
+  bodyFatPct: number | null;
+  sleepHours: number | null;
+  restingHr: number | null;
+}
+
+export interface MonthlyCalendarSummaryDTO {
+  loggedDays: number;
+  optimalDays: number;
+  moderateDays: number;
+  overloadDays: number;
+  avgCalories: number;
+  avgProteinG: number;
+  totalActiveCalories: number;
+  avgWeightKg: number | null;
+  supplementAdherencePct: number;
+}
+
+export interface MonthlyCalendarResponse {
+  month: string;
+  daysInMonth: number;
+  today: string;
+  days: CalendarDaySummaryDTO[];
+  summary: MonthlyCalendarSummaryDTO;
+}
+
+export interface DashboardBootstrapResponse {
+  me: MeResponseDTO;
+  dashboard: DashboardTodayResponse | null;
+  trends: MetricsTrendsResponse | null;
+  syncStatus: SyncStatusDTO;
+}
+
+export interface UpdateSupplementsResponse {
+  supplementStack: SupplementConfig[];
 }

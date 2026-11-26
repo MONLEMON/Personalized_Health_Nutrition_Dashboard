@@ -1,15 +1,20 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
+  BmrFormula,
   CreateBatchNutritionLogsInput,
   CreateBodyMetricInput,
   CreateNutritionLogInput,
   CreateWorkoutLogInput,
+  DashboardBootstrapResponse,
   DashboardTodayResponse,
   MetricsTrendsResponse,
   NutritionLogDTO,
+  SupplementConfig,
   SyncStatusDTO,
+  UpdateProfileSettingsInput,
   WorkoutLogDTO,
 } from '@health-dash/shared';
+import { useAuth } from '../contexts/AuthContext';
 import {
   ApiError,
   createBodyMetric,
@@ -18,11 +23,15 @@ import {
   createWorkoutLog,
   deleteNutritionLog,
   deleteWorkoutLog,
+  fetchDashboardBootstrap,
   fetchDashboardToday,
   fetchMetricsTrends,
   fetchWebhookSyncStatus,
   toggleSupplement as apiToggleSupplement,
+  updateProfileSettings as apiUpdateProfileSettings,
+  updateSupplementStack as apiUpdateSupplementStack,
 } from '../lib/api';
+import { isSupabaseConfigured } from '../lib/supabase';
 import { getMockMetricsTrends, mockDashboardToday } from '../data/mockDashboard';
 import type { TrendTimeframeDays } from '../components/BodyRecompChart';
 
@@ -54,6 +63,18 @@ export interface UseDashboardReturn {
   logWorkout: (input: CreateWorkoutLogInput) => Promise<void>;
   removeWorkout: (id: string) => Promise<void>;
   logBodyMetric: (input: CreateBodyMetricInput) => Promise<void>;
+  saveSupplementStack: (supplements: SupplementConfig[]) => Promise<void>;
+  saveProfileSettings: (input: UpdateProfileSettingsInput) => Promise<void>;
+}
+
+function calculateAgeFromBirthDate(birthDate: string, referenceDate: string): number {
+  const [by, bm, bd] = birthDate.split('-').map(Number);
+  const [ry, rm, rd] = referenceDate.split('-').map(Number);
+  let age = ry - by;
+  if (rm < bm || (rm === bm && rd < bd)) {
+    age -= 1;
+  }
+  return Math.max(0, Number.isFinite(age) ? age : 30);
 }
 
 function recalculateFallbackDashboard(
@@ -116,56 +137,192 @@ function recalculateFallbackDashboard(
   };
 }
 
+function recalculateFallbackSettings(
+  prev: DashboardTodayResponse,
+  input: UpdateProfileSettingsInput,
+): DashboardTodayResponse {
+  const age = calculateAgeFromBirthDate(input.birth_date, prev.date);
+  const weightKg = prev.latestMetric.weightKg;
+  const bodyFatPct = prev.latestMetric.bodyFatPct;
+
+  let bmr: number;
+  let bmrFormula: BmrFormula;
+  let leanBodyMassKg: number | null;
+  if (bodyFatPct !== null && Number.isFinite(bodyFatPct)) {
+    const rawLbm = weightKg * (1 - bodyFatPct / 100);
+    bmr = Math.round(370 + 21.6 * rawLbm);
+    bmrFormula = 'katch_mcardle';
+    leanBodyMassKg = Math.round(rawLbm * 100) / 100;
+  } else {
+    const offset = input.gender === 'male' ? 5 : input.gender === 'female' ? -161 : -78;
+    bmr = Math.round(10 * weightKg + 6.25 * input.height_cm - 5 * age + offset);
+    bmrFormula = 'mifflin_st_jeor';
+    leanBodyMassKg = null;
+  }
+
+  const baselineTdee = Math.round(bmr * input.baseline_activity_multiplier);
+  const updated: DashboardTodayResponse = {
+    ...prev,
+    profile: {
+      ...prev.profile,
+      name: input.name,
+      sex: input.gender,
+      birthDate: input.birth_date,
+      age,
+      heightCm: input.height_cm,
+      baselineActivityMultiplier: input.baseline_activity_multiplier,
+    },
+    goal: {
+      ...prev.goal,
+      goalType: input.goal_type,
+      calorieAdjustment: input.calorie_adjustment,
+      proteinPerKg: input.protein_per_kg,
+      fatRatio: input.fat_ratio,
+    },
+    energy: {
+      ...prev.energy,
+      bmr,
+      bmrFormula,
+      leanBodyMassKg,
+      baselineTdee,
+      calorieAdjustment: input.calorie_adjustment,
+    },
+  };
+
+  return recalculateFallbackDashboard(updated, updated.meals, updated.workouts);
+}
+
+function mergeSupplementStatuses(
+  prevSupplements: DashboardTodayResponse['supplements'],
+  nextConfigs: SupplementConfig[],
+): DashboardTodayResponse['supplements'] {
+  const takenByKey = new Map(prevSupplements.map((s) => [s.key, s.taken]));
+  return nextConfigs.map((cfg) => ({
+    ...cfg,
+    taken: takenByKey.get(cfg.key) ?? false,
+  }));
+}
+
 export function useDashboard(): UseDashboardReturn {
-  const [dashboard, setDashboard] = useState<DashboardTodayResponse | null>(null);
-  const [trends, setTrends] = useState<MetricsTrendsResponse | null>(null);
-  const [syncStatus, setSyncStatus] = useState<SyncStatusDTO>(DEFAULT_SYNC_STATUS);
+  const { session, bootstrap, updateBootstrapState } = useAuth();
+
+  const [dashboard, setDashboard] = useState<DashboardTodayResponse | null>(
+    () => bootstrap?.dashboard ?? null,
+  );
+  const [trends, setTrends] = useState<MetricsTrendsResponse | null>(
+    () => bootstrap?.trends ?? null,
+  );
+  const [syncStatus, setSyncStatus] = useState<SyncStatusDTO>(
+    () => bootstrap?.syncStatus ?? DEFAULT_SYNC_STATUS,
+  );
   const [trendDays, setTrendDaysState] = useState<TrendTimeframeDays>(30);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState<boolean>(() => !bootstrap?.dashboard);
   const [error, setError] = useState<string | null>(null);
   const [isDemoFallback, setIsDemoFallback] = useState<boolean>(false);
   const [togglingSupplementKey, setTogglingSupplementKey] = useState<string | null>(null);
   const [submittingLog, setSubmittingLog] = useState<boolean>(false);
 
-  const loadAll = useCallback(async (days: TrendTimeframeDays) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [todayRes, trendsRes, syncRes] = await Promise.all([
-        fetchDashboardToday(),
-        fetchMetricsTrends(days),
-        fetchWebhookSyncStatus().catch((err) => {
-          if (err instanceof ApiError && err.status === 401) {
-            throw err;
+  const lastAppliedBootstrapRef = useRef<DashboardBootstrapResponse | null>(
+    bootstrap?.dashboard ? bootstrap : null,
+  );
+  const bootstrappedUserRef = useRef<string | null>(
+    bootstrap?.dashboard && session?.user.id ? session.user.id : null,
+  );
+  const devLoadedRef = useRef<boolean>(false);
+  const trendsRef = useRef<MetricsTrendsResponse | null>(trends);
+  const trendDaysRef = useRef<TrendTimeframeDays>(trendDays);
+  trendsRef.current = trends;
+  trendDaysRef.current = trendDays;
+
+  const loadAll = useCallback(
+    async (days: TrendTimeframeDays) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await fetchDashboardBootstrap(days);
+        if (res.dashboard) {
+          setDashboard(res.dashboard);
+        } else {
+          setDashboard((prev) => prev ?? mockDashboardToday);
+        }
+        if (res.trends) {
+          setTrends(res.trends);
+        }
+        setSyncStatus(res.syncStatus);
+        setIsDemoFallback(false);
+        if (session?.user.id) {
+          lastAppliedBootstrapRef.current = res;
+          bootstrappedUserRef.current = session.user.id;
+          updateBootstrapState(res);
+        }
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 401) {
+          setError(null);
+          return;
+        }
+        setDashboard((prev) => {
+          if (prev) {
+            setError(err instanceof Error ? err.message : 'Unable to refresh dashboard.');
+            return prev;
           }
-          return DEFAULT_SYNC_STATUS;
-        }),
-      ]);
-      setDashboard(todayRes);
-      setTrends(trendsRes);
-      setSyncStatus(syncRes);
-      setIsDemoFallback(false);
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 401) {
-        setError(null);
-        return;
+          setTrends(getMockMetricsTrends(days));
+          setSyncStatus(DEFAULT_SYNC_STATUS);
+          setIsDemoFallback(true);
+          return mockDashboardToday;
+        });
+      } finally {
+        setLoading(false);
       }
-      setDashboard((prev) => prev ?? mockDashboardToday);
-      setTrends(getMockMetricsTrends(days));
-      setSyncStatus(DEFAULT_SYNC_STATUS);
-      setIsDemoFallback(true);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    },
+    [session?.user.id, updateBootstrapState],
+  );
 
   useEffect(() => {
-    void loadAll(trendDays);
-    // Initial load only; timeframe changes are handled by setTrendDays
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (bootstrap && bootstrap !== lastAppliedBootstrapRef.current) {
+      lastAppliedBootstrapRef.current = bootstrap;
+      if (bootstrap.dashboard) {
+        setDashboard(bootstrap.dashboard);
+        setSyncStatus(bootstrap.syncStatus);
+        setIsDemoFallback(false);
+        setLoading(false);
+        setError(null);
+        if (
+          bootstrap.trends &&
+          (bootstrap.trends.days === trendDaysRef.current || !trendsRef.current)
+        ) {
+          setTrends(bootstrap.trends);
+        }
+        if (session?.user.id) {
+          bootstrappedUserRef.current = session.user.id;
+        }
+        return;
+      }
+    }
+
+    if (!isSupabaseConfigured) {
+      if (!devLoadedRef.current) {
+        devLoadedRef.current = true;
+        void loadAll(trendDaysRef.current);
+      }
+      return;
+    }
+
+    if (!session?.user.id) {
+      lastAppliedBootstrapRef.current = null;
+      bootstrappedUserRef.current = null;
+      return;
+    }
+
+    if (!bootstrap?.dashboard && bootstrappedUserRef.current !== session.user.id) {
+      bootstrappedUserRef.current = session.user.id;
+      void loadAll(trendDaysRef.current);
+    }
+  }, [bootstrap, loadAll, session?.user.id]);
 
   const reset = useCallback(() => {
+    lastAppliedBootstrapRef.current = null;
+    bootstrappedUserRef.current = null;
+    devLoadedRef.current = false;
     setDashboard(null);
     setTrends(null);
     setSyncStatus(DEFAULT_SYNC_STATUS);
@@ -178,13 +335,14 @@ export function useDashboard(): UseDashboardReturn {
     try {
       const nextStatus = await fetchWebhookSyncStatus();
       setSyncStatus(nextStatus);
+      updateBootstrapState({ syncStatus: nextStatus });
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         return;
       }
       setSyncStatus(DEFAULT_SYNC_STATUS);
     }
-  }, []);
+  }, [updateBootstrapState]);
 
   const refresh = useCallback(async () => {
     await loadAll(trendDays);
@@ -200,6 +358,9 @@ export function useDashboard(): UseDashboardReturn {
       void fetchMetricsTrends(days)
         .then((nextTrends) => {
           setTrends(nextTrends);
+          if (days === 30) {
+            updateBootstrapState({ trends: nextTrends });
+          }
         })
         .catch((err) => {
           if (err instanceof ApiError && err.status === 401) {
@@ -208,7 +369,15 @@ export function useDashboard(): UseDashboardReturn {
           setTrends(getMockMetricsTrends(days));
         });
     },
-    [isDemoFallback],
+    [isDemoFallback, updateBootstrapState],
+  );
+
+  const syncDashboardToCache = useCallback(
+    (fresh: DashboardTodayResponse) => {
+      setDashboard(fresh);
+      updateBootstrapState({ dashboard: fresh });
+    },
+    [updateBootstrapState],
   );
 
   const toggleSupplement = useCallback(
@@ -237,7 +406,7 @@ export function useDashboard(): UseDashboardReturn {
       try {
         await apiToggleSupplement({ supplementKey, loggedDate: dashboard.date });
         const fresh = await fetchDashboardToday();
-        setDashboard(fresh);
+        syncDashboardToCache(fresh);
       } catch (err) {
         setDashboard(previous);
         setError(err instanceof Error ? err.message : 'Failed to toggle supplement');
@@ -245,7 +414,7 @@ export function useDashboard(): UseDashboardReturn {
         setTogglingSupplementKey(null);
       }
     },
-    [dashboard, isDemoFallback],
+    [dashboard, isDemoFallback, syncDashboardToCache],
   );
 
   const logMeal = useCallback(
@@ -277,7 +446,7 @@ export function useDashboard(): UseDashboardReturn {
 
         await createNutritionLog(input);
         const fresh = await fetchDashboardToday();
-        setDashboard(fresh);
+        syncDashboardToCache(fresh);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to log meal';
         setError(message);
@@ -286,7 +455,7 @@ export function useDashboard(): UseDashboardReturn {
         setSubmittingLog(false);
       }
     },
-    [isDemoFallback],
+    [isDemoFallback, syncDashboardToCache],
   );
 
   const logMealsBatch = useCallback(
@@ -324,7 +493,7 @@ export function useDashboard(): UseDashboardReturn {
 
         await createNutritionLogsBatch(input);
         const fresh = await fetchDashboardToday();
-        setDashboard(fresh);
+        syncDashboardToCache(fresh);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to log meals';
         setError(message);
@@ -333,7 +502,7 @@ export function useDashboard(): UseDashboardReturn {
         setSubmittingLog(false);
       }
     },
-    [isDemoFallback],
+    [isDemoFallback, syncDashboardToCache],
   );
 
   const removeMeal = useCallback(
@@ -354,12 +523,12 @@ export function useDashboard(): UseDashboardReturn {
       try {
         await deleteNutritionLog(id);
         const fresh = await fetchDashboardToday();
-        setDashboard(fresh);
+        syncDashboardToCache(fresh);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to delete meal');
       }
     },
-    [isDemoFallback],
+    [isDemoFallback, syncDashboardToCache],
   );
 
   const logWorkout = useCallback(
@@ -391,7 +560,7 @@ export function useDashboard(): UseDashboardReturn {
 
         await createWorkoutLog(input);
         const fresh = await fetchDashboardToday();
-        setDashboard(fresh);
+        syncDashboardToCache(fresh);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to log workout';
         setError(message);
@@ -400,7 +569,7 @@ export function useDashboard(): UseDashboardReturn {
         setSubmittingLog(false);
       }
     },
-    [isDemoFallback],
+    [isDemoFallback, syncDashboardToCache],
   );
 
   const removeWorkout = useCallback(
@@ -421,12 +590,12 @@ export function useDashboard(): UseDashboardReturn {
       try {
         await deleteWorkoutLog(id);
         const fresh = await fetchDashboardToday();
-        setDashboard(fresh);
+        syncDashboardToCache(fresh);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to delete workout');
       }
     },
-    [isDemoFallback],
+    [isDemoFallback, syncDashboardToCache],
   );
 
   const logBodyMetric = useCallback(
@@ -461,6 +630,10 @@ export function useDashboard(): UseDashboardReturn {
         ]);
         setDashboard(freshDashboard);
         setTrends(freshTrends);
+        updateBootstrapState({
+          dashboard: freshDashboard,
+          ...(trendDays === 30 ? { trends: freshTrends } : {}),
+        });
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to log body metric';
         setError(message);
@@ -469,7 +642,93 @@ export function useDashboard(): UseDashboardReturn {
         setSubmittingLog(false);
       }
     },
-    [isDemoFallback, trendDays],
+    [isDemoFallback, trendDays, updateBootstrapState],
+  );
+
+  const saveSupplementStack = useCallback(
+    async (supplements: SupplementConfig[]) => {
+      setSubmittingLog(true);
+      setError(null);
+      try {
+        if (isDemoFallback) {
+          setDashboard((prev) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              profile: { ...prev.profile, supplementStack: supplements },
+              supplements: mergeSupplementStatuses(prev.supplements, supplements),
+            };
+          });
+          return;
+        }
+
+        const res = await apiUpdateSupplementStack({ supplements });
+        setDashboard((prev) => {
+          if (!prev) return prev;
+          const nextDashboard: DashboardTodayResponse = {
+            ...prev,
+            profile: { ...prev.profile, supplementStack: res.supplementStack },
+            supplements: mergeSupplementStatuses(prev.supplements, res.supplementStack),
+          };
+          updateBootstrapState({ dashboard: nextDashboard });
+          return nextDashboard;
+        });
+
+        const fresh = await fetchDashboardBootstrap(trendDays);
+        if (fresh.dashboard) {
+          setDashboard(fresh.dashboard);
+        }
+        if (fresh.trends) {
+          setTrends(fresh.trends);
+        }
+        setSyncStatus(fresh.syncStatus);
+        lastAppliedBootstrapRef.current = fresh;
+        updateBootstrapState(fresh);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to update supplement stack';
+        setError(message);
+        throw err;
+      } finally {
+        setSubmittingLog(false);
+      }
+    },
+    [isDemoFallback, trendDays, updateBootstrapState],
+  );
+
+  const saveProfileSettings = useCallback(
+    async (input: UpdateProfileSettingsInput) => {
+      setSubmittingLog(true);
+      setError(null);
+      try {
+        if (isDemoFallback) {
+          setDashboard((prev) => (prev ? recalculateFallbackSettings(prev, input) : prev));
+          return;
+        }
+
+        const updatedMe = await apiUpdateProfileSettings(input);
+        const fresh = await fetchDashboardBootstrap(trendDays);
+        const syncedBootstrap: DashboardBootstrapResponse = {
+          ...fresh,
+          me: fresh.me ?? updatedMe,
+        };
+        if (syncedBootstrap.dashboard) {
+          setDashboard(syncedBootstrap.dashboard);
+        }
+        if (syncedBootstrap.trends) {
+          setTrends(syncedBootstrap.trends);
+        }
+        setSyncStatus(syncedBootstrap.syncStatus);
+        lastAppliedBootstrapRef.current = syncedBootstrap;
+        updateBootstrapState(syncedBootstrap);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to update profile settings';
+        setError(message);
+        throw err;
+      } finally {
+        setSubmittingLog(false);
+      }
+    },
+    [isDemoFallback, trendDays, updateBootstrapState],
   );
 
   return {
@@ -494,5 +753,7 @@ export function useDashboard(): UseDashboardReturn {
     logWorkout,
     removeWorkout,
     logBodyMetric,
+    saveSupplementStack,
+    saveProfileSettings,
   };
 }

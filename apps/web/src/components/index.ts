@@ -37,3 +37,12 @@ export { OnboardingWizard } from './OnboardingWizard';
 
 export { ProtectedRoute } from './ProtectedRoute';
 export type { ProtectedRouteProps } from './ProtectedRoute';
+
+export { SupplementManagerModal } from './SupplementManagerModal';
+export type { SupplementManagerModalProps } from './SupplementManagerModal';
+
+export { ProfileSettingsModal } from './ProfileSettingsModal';
+export type { ProfileSettingsModalProps } from './ProfileSettingsModal';
+
+export { MonthlyCalendarCard } from './MonthlyCalendarCard';
+export type { MonthlyCalendarCardProps } from './MonthlyCalendarCard';

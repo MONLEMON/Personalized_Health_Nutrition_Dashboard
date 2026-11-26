@@ -1,5 +1,10 @@
 import { lazy, Suspense, useEffect, useState, type FormEvent } from 'react';
-import { createBodyMetricSchema, type GoalType } from '@health-dash/shared';
+import {
+  createBodyMetricSchema,
+  type GoalType,
+  type SupplementConfig,
+  type UpdateProfileSettingsInput,
+} from '@health-dash/shared';
 import {
   Activity,
   AlertCircle,
@@ -8,6 +13,7 @@ import {
   LogOut,
   RefreshCw,
   Scale,
+  Settings,
   Target,
   X,
 } from 'lucide-react';
@@ -18,9 +24,12 @@ import {
   HeroStatusCard,
   MacroRingsCard,
   MobileBottomNav,
+  MonthlyCalendarCard,
+  ProfileSettingsModal,
   ProfileSummaryCard,
   QuickLogFab,
   QuickLogModal,
+  SupplementManagerModal,
   TodayLogsCard,
   type MobileTab,
   type QuickLogTab,
@@ -268,13 +277,20 @@ export function App() {
     logWorkout,
     removeWorkout,
     logBodyMetric,
+    saveSupplementStack,
+    saveProfileSettings,
   } = useDashboard();
 
   const [quickLogOpen, setQuickLogOpen] = useState(false);
   const [quickLogTab, setQuickLogTab] = useState<QuickLogTab>('ai');
   const [weighInOpen, setWeighInOpen] = useState(false);
   const [shortcutsModalOpen, setShortcutsModalOpen] = useState(false);
+  const [supplementManagerOpen, setSupplementManagerOpen] = useState(false);
+  const [profileSettingsOpen, setProfileSettingsOpen] = useState(false);
+  const [calendarRefreshKey, setCalendarRefreshKey] = useState(0);
   const [mobileTab, setMobileTab] = useState<MobileTab>('dashboard');
+
+  const bumpCalendar = () => setCalendarRefreshKey((prev) => prev + 1);
 
   useEffect(() => {
     if (!shortcutsModalOpen) return;
@@ -402,18 +418,33 @@ export function App() {
               <span>{formatDisplayDate(dashboard.date)}</span>
             </div>
 
-            {/* Active Goal Badge */}
-            <div
-              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold ${goalBadge.className}`}
+            {/* Active Goal Badge (clickable to open Profile & Goal Settings) */}
+            <button
+              type="button"
+              onClick={() => setProfileSettingsOpen(true)}
+              title="Edit Profile & Goal Settings"
+              className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition hover:brightness-110 active:scale-[0.98] ${goalBadge.className}`}
             >
               <Target className="h-3.5 w-3.5" />
               <span>
                 {goalBadge.label} · {calAdjText} kcal
               </span>
-            </div>
+            </button>
 
             {/* Apple Health Sync Pill (Mobile + Desktop) */}
             <AppleHealthSyncPill syncStatus={syncStatus} onClick={handleSyncPillClick} />
+
+            {/* Desktop Settings Button */}
+            <button
+              type="button"
+              onClick={() => setProfileSettingsOpen(true)}
+              aria-label="Open Profile and Goal Settings"
+              title="Profile & Goal Settings"
+              className="hidden cursor-pointer items-center gap-1.5 rounded-full border border-white/10 bg-[#141720] px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:border-white/20 hover:text-white md:inline-flex"
+            >
+              <Settings className="h-3.5 w-3.5 text-[#38BDF8]" />
+              <span>Settings</span>
+            </button>
 
             {/* Storage Mode / Live Status Indicator (Desktop/Tablet) */}
             <div
@@ -503,10 +534,17 @@ export function App() {
               workouts={dashboard.workouts}
               supplements={dashboard.supplements}
               activeCalories={dashboard.energy.activeCalories}
-              onToggleSupplement={toggleSupplement}
+              onToggleSupplement={async (key) => {
+                await toggleSupplement(key);
+                bumpCalendar();
+              }}
               togglingKey={togglingSupplementKey}
-              onDeleteWorkout={removeWorkout}
+              onDeleteWorkout={async (id) => {
+                await removeWorkout(id);
+                bumpCalendar();
+              }}
               onAddWorkoutClick={() => openQuickLog('workout')}
+              onManageSupplementsClick={() => setSupplementManagerOpen(true)}
             />
           </div>
 
@@ -537,8 +575,24 @@ export function App() {
           >
             <TodayLogsCard
               meals={dashboard.meals}
-              onDeleteMeal={removeMeal}
+              onDeleteMeal={async (id) => {
+                await removeMeal(id);
+                bumpCalendar();
+              }}
               onAddMealClick={() => openQuickLog('ai')}
+            />
+          </div>
+
+          <div
+            className={`min-w-0 md:col-span-2 lg:col-span-12 ${
+              mobileTab === 'calendar' ? 'block' : 'hidden md:block'
+            }`}
+          >
+            <MonthlyCalendarCard
+              todayDate={dashboard.date}
+              refreshTrigger={calendarRefreshKey}
+              isDemoFallback={isDemoFallback}
+              fallbackDashboard={dashboard}
             />
           </div>
 
@@ -585,10 +639,17 @@ export function App() {
                 isDemoFallback={isDemoFallback}
                 loading={loading}
                 onLogMetricClick={() => setWeighInOpen(true)}
-                onRefresh={() => void refresh()}
+                onRefresh={() => {
+                  void refresh().then(() => bumpCalendar());
+                }}
+                onEditProfileClick={() => setProfileSettingsOpen(true)}
+                onManageSupplementsClick={() => setSupplementManagerOpen(true)}
                 syncStatus={syncStatus}
                 recordedDate={dashboard.date}
-                onSyncSuccess={refresh}
+                onSyncSuccess={async () => {
+                  await refresh();
+                  bumpCalendar();
+                }}
                 userEmail={displayEmail}
                 webhookKeyStatus={me?.webhookKey}
                 onKeyGenerated={async () => {
@@ -618,9 +679,18 @@ export function App() {
         isOpen={quickLogOpen}
         initialTab={quickLogTab}
         onClose={() => setQuickLogOpen(false)}
-        onSubmitMeal={logMeal}
-        onSubmitMealsBatch={logMealsBatch}
-        onSubmitWorkout={logWorkout}
+        onSubmitMeal={async (input) => {
+          await logMeal(input);
+          bumpCalendar();
+        }}
+        onSubmitMealsBatch={async (input) => {
+          await logMealsBatch(input);
+          bumpCalendar();
+        }}
+        onSubmitWorkout={async (input) => {
+          await logWorkout(input);
+          bumpCalendar();
+        }}
         isSubmitting={submittingLog}
       />
 
@@ -632,9 +702,37 @@ export function App() {
           currentMuscleKg={dashboard.latestMetric.skeletalMuscleMassKg}
           isSubmitting={submittingLog}
           onClose={() => setWeighInOpen(false)}
-          onSubmit={logBodyMetric}
+          onSubmit={async (input) => {
+            await logBodyMetric(input);
+            bumpCalendar();
+          }}
         />
       ) : null}
+
+      <SupplementManagerModal
+        isOpen={supplementManagerOpen}
+        supplements={dashboard.profile.supplementStack}
+        isSubmitting={submittingLog}
+        onClose={() => setSupplementManagerOpen(false)}
+        onSave={async (supplements: SupplementConfig[]) => {
+          await saveSupplementStack(supplements);
+          bumpCalendar();
+        }}
+      />
+
+      <ProfileSettingsModal
+        isOpen={profileSettingsOpen}
+        profile={dashboard.profile}
+        goal={dashboard.goal}
+        latestMetric={dashboard.latestMetric}
+        activeCalories={dashboard.energy.activeCalories}
+        isSubmitting={submittingLog}
+        onClose={() => setProfileSettingsOpen(false)}
+        onSave={async (input: UpdateProfileSettingsInput) => {
+          await saveProfileSettings(input);
+          bumpCalendar();
+        }}
+      />
 
       {shortcutsModalOpen ? (
         <div
@@ -656,7 +754,10 @@ export function App() {
                 await refreshMe();
               }}
               recordedDate={dashboard.date}
-              onSyncSuccess={refresh}
+              onSyncSuccess={async () => {
+                await refresh();
+                bumpCalendar();
+              }}
               onClose={() => setShortcutsModalOpen(false)}
             />
           </div>

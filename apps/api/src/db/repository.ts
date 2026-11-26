@@ -1,16 +1,22 @@
 import crypto from 'node:crypto';
-import { and, asc, desc, eq, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, lte, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type {
   AppleHealthWebhookPayload,
   AppleHealthWebhookResponse,
   BodyMetricDTO,
+  CalendarDayStatus,
+  CalendarDaySummaryDTO,
+  DashboardBootstrapResponse,
   DashboardTodayResponse,
   MacroProgress,
   MeResponseDTO,
   MetricsTrendsResponse,
+  MonthlyCalendarResponse,
+  MonthlyCalendarSummaryDTO,
   NutritionLogDTO,
   NutritionLogSource,
+  SupplementConfig,
   SupplementStatusDTO,
   SyncStatusDTO,
   UserGoalDTO,
@@ -26,6 +32,7 @@ import type {
   CreateWorkoutLogInput,
   OnboardingProfileInput,
   ToggleSupplementInput,
+  UpdateProfileSettingsInput,
 } from '@health-dash/shared';
 import { getDb, type Database } from './index';
 import {
@@ -173,6 +180,22 @@ export interface HealthRepository {
     payload: AppleHealthWebhookPayload,
   ): Promise<AppleHealthWebhookResponse>;
   getAppleHealthSyncStatus(userId: string): Promise<SyncStatusDTO>;
+  updateSupplementStack(
+    userId: string,
+    supplements: SupplementConfig[],
+  ): Promise<SupplementConfig[]>;
+  updateProfileSettings(
+    userId: string,
+    input: UpdateProfileSettingsInput,
+    email?: string | null,
+  ): Promise<MeResponseDTO>;
+  getBootstrapData(
+    userId: string,
+    days: number,
+    email?: string | null,
+    date?: string,
+  ): Promise<DashboardBootstrapResponse>;
+  getMonthlyCalendar(userId: string, month?: string): Promise<MonthlyCalendarResponse>;
 }
 
 function roundTo(value: number, decimals: number): number {
@@ -292,6 +315,288 @@ function buildDashboardTodayResponse(params: {
     workouts,
     meals,
     supplements,
+  };
+}
+
+function selectLatestMetric(
+  metrics: BodyMetricDTO[],
+  targetDate: string,
+): BodyMetricDTO {
+  const eligible = metrics.filter((m) => m.recordedDate <= targetDate);
+  const pool = eligible.length > 0 ? eligible : metrics;
+  if (pool.length === 0) {
+    throw new HTTPException(404, {
+      message: 'No body metrics found for user. Complete onboarding first.',
+    });
+  }
+
+  let latest = pool[pool.length - 1];
+  for (const metric of pool) {
+    if (metric.recordedDate >= latest.recordedDate) {
+      latest = metric;
+    }
+  }
+  return latest;
+}
+
+function buildSyncStatus(
+  latestSync:
+    | { syncedAt: Date; payloadSummary: { synced_fields?: string[] } }
+    | null
+    | undefined,
+): SyncStatusDTO {
+  if (!latestSync) {
+    return {
+      status: 'NEVER',
+      last_synced_at: null,
+      synced_fields: [],
+    };
+  }
+
+  return {
+    status: 'SUCCESS',
+    last_synced_at: latestSync.syncedAt.toISOString(),
+    synced_fields: [...(latestSync.payloadSummary.synced_fields ?? [])],
+  };
+}
+
+function getMonthBounds(month?: string): {
+  resolvedMonth: string;
+  daysInMonth: number;
+  monthStart: string;
+  monthEnd: string;
+  today: string;
+} {
+  const today = getBangkokDateString();
+  const resolvedMonth = month ?? today.slice(0, 7);
+  const [yearNum, monthNum] = resolvedMonth.split('-').map(Number);
+  const daysInMonth = new Date(Date.UTC(yearNum, monthNum, 0)).getUTCDate();
+  const monthStart = `${resolvedMonth}-01`;
+  const monthEnd = `${resolvedMonth}-${String(daysInMonth).padStart(2, '0')}`;
+  return { resolvedMonth, daysInMonth, monthStart, monthEnd, today };
+}
+
+function buildMonthlyCalendarResponse(params: {
+  month: string;
+  daysInMonth: number;
+  today: string;
+  profile: UserProfileDTO;
+  goal: UserGoalDTO;
+  metricsUpToMonthEnd: BodyMetricDTO[];
+  earliestFallbackMetric: BodyMetricDTO | null;
+  workoutsInMonth: WorkoutLogDTO[];
+  nutritionInMonth: NutritionLogDTO[];
+}): MonthlyCalendarResponse {
+  const {
+    month,
+    daysInMonth,
+    today,
+    profile,
+    goal,
+    metricsUpToMonthEnd,
+    earliestFallbackMetric,
+    workoutsInMonth,
+    nutritionInMonth,
+  } = params;
+
+  const sortedMetrics = [...metricsUpToMonthEnd].sort((a, b) =>
+    a.recordedDate.localeCompare(b.recordedDate),
+  );
+  const metricByDate = new Map<string, BodyMetricDTO>();
+  for (const metric of sortedMetrics) {
+    metricByDate.set(metric.recordedDate, metric);
+  }
+
+  const workoutsByDate = new Map<string, WorkoutLogDTO[]>();
+  for (const workout of workoutsInMonth) {
+    const list = workoutsByDate.get(workout.loggedDate);
+    if (list) {
+      list.push(workout);
+    } else {
+      workoutsByDate.set(workout.loggedDate, [workout]);
+    }
+  }
+
+  const nutritionByDate = new Map<string, NutritionLogDTO[]>();
+  for (const entry of nutritionInMonth) {
+    const list = nutritionByDate.get(entry.loggedDate);
+    if (list) {
+      list.push(entry);
+    } else {
+      nutritionByDate.set(entry.loggedDate, [entry]);
+    }
+  }
+
+  const supplementsTotal = profile.supplementStack.length;
+  const days: CalendarDaySummaryDTO[] = [];
+  let carryForwardMetric: BodyMetricDTO | null = null;
+  let metricPtr = 0;
+
+  let loggedDays = 0;
+  let optimalDays = 0;
+  let moderateDays = 0;
+  let overloadDays = 0;
+  let mealDaysCount = 0;
+  let mealDaysCaloriesSum = 0;
+  let mealDaysProteinSum = 0;
+  let totalActiveCalories = 0;
+  let weighedDaysCount = 0;
+  let weighedDaysSum = 0;
+  let totalSupplementsTaken = 0;
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dayDate = `${month}-${String(day).padStart(2, '0')}`;
+    while (
+      metricPtr < sortedMetrics.length &&
+      sortedMetrics[metricPtr].recordedDate <= dayDate
+    ) {
+      carryForwardMetric = sortedMetrics[metricPtr];
+      metricPtr++;
+    }
+
+    const dayMetric = metricByDate.get(dayDate) ?? null;
+    const referenceMetric = carryForwardMetric ?? earliestFallbackMetric;
+    const refWeightKg = referenceMetric?.weightKg ?? DEFAULT_FALLBACK_WEIGHT_KG;
+    const refBodyFatPct = referenceMetric?.bodyFatPct ?? null;
+
+    const age = calculateAge(profile.birthDate, dayDate);
+    const bmrResult = calculateBmr({
+      weightKg: refWeightKg,
+      heightCm: profile.heightCm,
+      age,
+      sex: profile.sex,
+      bodyFatPct: refBodyFatPct,
+    });
+
+    const dayWorkouts = workoutsByDate.get(dayDate) ?? [];
+    const workoutCount = dayWorkouts.length;
+    const activeCalories = Math.round(
+      dayWorkouts.reduce((sum, w) => sum + w.activeCalories, 0),
+    );
+
+    const { dynamicTdee } = calculateDynamicTdee({
+      bmr: bmrResult.bmr,
+      baselineActivityMultiplier: profile.baselineActivityMultiplier,
+      activeCalories,
+    });
+    const targetCalories = calculateTargetCalories({
+      dynamicTdee,
+      calorieAdjustment: goal.calorieAdjustment,
+    });
+    const macroTargets = calculateMacroTargets({
+      targetCalories,
+      weightKg: refWeightKg,
+      proteinPerKg: goal.proteinPerKg,
+      fatRatio: goal.fatRatio,
+    });
+
+    const dayNutrition = nutritionByDate.get(dayDate) ?? [];
+    const meals = dayNutrition.filter((item) => item.mealType !== 'supplement');
+    const mealCount = meals.length;
+    const consumedCalories = Math.round(
+      meals.reduce((sum, m) => sum + m.calories, 0),
+    );
+    const proteinG = roundTo(
+      meals.reduce((sum, m) => sum + m.proteinG, 0),
+      1,
+    );
+    const carbsG = roundTo(
+      meals.reduce((sum, m) => sum + m.carbsG, 0),
+      1,
+    );
+    const fatG = roundTo(
+      meals.reduce((sum, m) => sum + m.fatG, 0),
+      1,
+    );
+
+    const supplementsTaken = new Set(
+      dayNutrition
+        .filter((item) => item.mealType === 'supplement' && item.supplementKey)
+        .map((item) => item.supplementKey as string),
+    ).size;
+
+    const hasData =
+      mealCount > 0 || workoutCount > 0 || supplementsTaken > 0 || dayMetric !== null;
+    const status: CalendarDayStatus = !hasData
+      ? 'empty'
+      : evaluateReadiness({
+          consumedCalories,
+          targetCalories,
+          consumedProteinG: proteinG,
+          targetProteinG: macroTargets.proteinG,
+          activeCalories,
+          goalType: goal.goalType,
+        }).status;
+
+    if (hasData) {
+      loggedDays++;
+      if (status === 'optimal') optimalDays++;
+      else if (status === 'moderate') moderateDays++;
+      else if (status === 'overload') overloadDays++;
+    }
+    if (mealCount > 0 || consumedCalories > 0) {
+      mealDaysCount++;
+      mealDaysCaloriesSum += consumedCalories;
+      mealDaysProteinSum += proteinG;
+    }
+    totalActiveCalories += activeCalories;
+    totalSupplementsTaken += supplementsTaken;
+
+    const weightKg = dayMetric ? dayMetric.weightKg : null;
+    if (weightKg !== null) {
+      weighedDaysCount++;
+      weighedDaysSum += weightKg;
+    }
+
+    days.push({
+      date: dayDate,
+      hasData,
+      status,
+      consumedCalories,
+      targetCalories,
+      dynamicTdee,
+      activeCalories,
+      proteinG,
+      proteinTargetG: macroTargets.proteinG,
+      carbsG,
+      fatG,
+      mealCount,
+      workoutCount,
+      supplementsTaken,
+      supplementsTotal,
+      weightKg,
+      bodyFatPct: dayMetric ? dayMetric.bodyFatPct : null,
+      sleepHours: dayMetric ? (dayMetric.sleepHours ?? null) : null,
+      restingHr: dayMetric ? (dayMetric.restingHr ?? null) : null,
+    });
+  }
+
+  const summary: MonthlyCalendarSummaryDTO = {
+    loggedDays,
+    optimalDays,
+    moderateDays,
+    overloadDays,
+    avgCalories: mealDaysCount > 0 ? Math.round(mealDaysCaloriesSum / mealDaysCount) : 0,
+    avgProteinG:
+      mealDaysCount > 0 ? roundTo(mealDaysProteinSum / mealDaysCount, 1) : 0,
+    totalActiveCalories: Math.round(totalActiveCalories),
+    avgWeightKg:
+      weighedDaysCount > 0 ? roundTo(weighedDaysSum / weighedDaysCount, 2) : null,
+    supplementAdherencePct:
+      loggedDays > 0 && supplementsTotal > 0
+        ? Math.min(
+            100,
+            Math.round((totalSupplementsTaken / (loggedDays * supplementsTotal)) * 100),
+          )
+        : 0,
+  };
+
+  return {
+    month,
+    daysInMonth,
+    today,
+    days,
+    summary,
   };
 }
 
@@ -880,6 +1185,171 @@ export class InMemoryHealthRepository implements HealthRepository {
       last_synced_at: latest.syncedAt.toISOString(),
       synced_fields: [...latest.payloadSummary.synced_fields],
     };
+  }
+
+  async updateSupplementStack(
+    userId: string,
+    supplements: SupplementConfig[],
+  ): Promise<SupplementConfig[]> {
+    const user = this.requireUser(userId);
+    user.profile.supplementStack = supplements.map((s) => ({ ...s }));
+    return user.profile.supplementStack.map((s) => ({ ...s }));
+  }
+
+  async updateProfileSettings(
+    userId: string,
+    input: UpdateProfileSettingsInput,
+    email?: string | null,
+  ): Promise<MeResponseDTO> {
+    const user = this.requireUser(userId);
+    const activeGoal = user.goals.find((g) => g.isActive);
+    if (!activeGoal) {
+      throw new HTTPException(404, {
+        message: 'User profile not found. Complete onboarding first.',
+      });
+    }
+
+    user.profile.name = input.name.trim();
+    user.profile.sex = input.gender;
+    user.profile.birthDate = input.birth_date;
+    user.profile.age = calculateAge(input.birth_date);
+    user.profile.heightCm = input.height_cm;
+    user.profile.baselineActivityMultiplier = input.baseline_activity_multiplier;
+
+    activeGoal.goalType = input.goal_type;
+    activeGoal.calorieAdjustment = input.calorie_adjustment;
+    activeGoal.proteinPerKg = input.protein_per_kg;
+    activeGoal.fatRatio = input.fat_ratio;
+
+    return this.getMe(userId, email);
+  }
+
+  async getBootstrapData(
+    userId: string,
+    days: number,
+    email?: string | null,
+    date?: string,
+  ): Promise<DashboardBootstrapResponse> {
+    const targetDate = date ?? getLocalDateString();
+    const user = this.users.get(userId);
+    const activeGoal = user?.goals.find((g) => g.isActive) ?? null;
+    const syncStatus = await this.getAppleHealthSyncStatus(userId);
+    const webhookKey = user
+      ? buildWebhookKeyStatus(user.webhookKeyPrefix, user.webhookKeyHash)
+      : { configured: false, masked_key: null, prefix: null };
+
+    if (!user || !activeGoal) {
+      return {
+        me: {
+          userId,
+          email: email ?? null,
+          onboarded: false,
+          profile: null,
+          goal: null,
+          webhookKey,
+        },
+        dashboard: null,
+        trends: null,
+        syncStatus,
+      };
+    }
+
+    const allMetrics = user.metrics.filter((m) => m.userId === userId);
+    const latestMetric = selectLatestMetric(allMetrics, targetDate);
+
+    const profileDTO: UserProfileDTO = {
+      ...user.profile,
+      age: calculateAge(user.profile.birthDate),
+      webhookKeyPrefix: user.webhookKeyPrefix,
+      supplementStack: user.profile.supplementStack.map((s) => ({ ...s })),
+    };
+    const goalDTO: UserGoalDTO = { ...activeGoal };
+    const me: MeResponseDTO = {
+      userId,
+      email: email ?? null,
+      onboarded: true,
+      profile: profileDTO,
+      goal: goalDTO,
+      webhookKey,
+    };
+
+    const workouts = user.workouts
+      .filter((w) => w.userId === userId && w.loggedDate === targetDate)
+      .sort((a, b) => a.loggedAt.localeCompare(b.loggedAt))
+      .map((w) => ({ ...w, activityType: w.activityType ?? 'MANUAL' }));
+    const nutritionForDate = user.nutrition
+      .filter((n) => n.userId === userId && n.loggedDate === targetDate)
+      .sort((a, b) => a.loggedAt.localeCompare(b.loggedAt));
+
+    const dashboard = buildDashboardTodayResponse({
+      date: targetDate,
+      storageMode: 'memory',
+      profile: profileDTO,
+      goal: goalDTO,
+      latestMetric: {
+        ...latestMetric,
+        restingHr: latestMetric.restingHr ?? null,
+        sleepHours: latestMetric.sleepHours ?? null,
+      },
+      workouts,
+      nutritionForDate,
+    });
+
+    const trends = computeBodyTrends(allMetrics, days);
+
+    return { me, dashboard, trends, syncStatus };
+  }
+
+  async getMonthlyCalendar(
+    userId: string,
+    month?: string,
+  ): Promise<MonthlyCalendarResponse> {
+    const user = this.requireUser(userId);
+    const activeGoal = user.goals.find((g) => g.isActive);
+    if (!activeGoal) {
+      throw new HTTPException(404, {
+        message: 'User profile not found. Complete onboarding first.',
+      });
+    }
+
+    const { resolvedMonth, daysInMonth, monthStart, monthEnd, today } =
+      getMonthBounds(month);
+
+    const allUserMetrics = [...user.metrics]
+      .filter((m) => m.userId === userId)
+      .sort((a, b) => a.recordedDate.localeCompare(b.recordedDate));
+    const metricsUpToMonthEnd = allUserMetrics.filter(
+      (m) => m.recordedDate <= monthEnd,
+    );
+    const earliestFallbackMetric = allUserMetrics[0] ?? null;
+
+    const workoutsInMonth = user.workouts.filter(
+      (w) =>
+        w.userId === userId &&
+        w.loggedDate >= monthStart &&
+        w.loggedDate <= monthEnd,
+    );
+    const nutritionInMonth = user.nutrition.filter(
+      (n) =>
+        n.userId === userId &&
+        n.loggedDate >= monthStart &&
+        n.loggedDate <= monthEnd,
+    );
+
+    return buildMonthlyCalendarResponse({
+      month: resolvedMonth,
+      daysInMonth,
+      today,
+      profile: {
+        ...user.profile,
+        supplementStack: user.profile.supplementStack.map((s) => ({ ...s })),
+      },
+      goal: { ...activeGoal },
+      metricsUpToMonthEnd,
+      earliestFallbackMetric,
+      workoutsInMonth,
+      nutritionInMonth,
+    });
   }
 }
 
@@ -1594,6 +2064,240 @@ export class PostgresHealthRepository implements HealthRepository {
       last_synced_at: latest.syncedAt.toISOString(),
       synced_fields: latest.payloadSummary.synced_fields ?? [],
     };
+  }
+
+  async updateSupplementStack(
+    userId: string,
+    supplements: SupplementConfig[],
+  ): Promise<SupplementConfig[]> {
+    const nextStack = supplements.map((s) => ({ ...s }));
+    const [updated] = await this.db
+      .update(userProfiles)
+      .set({ supplementStack: nextStack })
+      .where(eq(userProfiles.id, userId))
+      .returning({ supplementStack: userProfiles.supplementStack });
+
+    if (!updated) {
+      throw new HTTPException(404, {
+        message: 'User profile not found. Complete onboarding first.',
+      });
+    }
+
+    return updated.supplementStack.map((s) => ({ ...s }));
+  }
+
+  async updateProfileSettings(
+    userId: string,
+    input: UpdateProfileSettingsInput,
+    email?: string | null,
+  ): Promise<MeResponseDTO> {
+    await this.db.transaction(async (tx) => {
+      const [updatedProfile] = await tx
+        .update(userProfiles)
+        .set({
+          name: input.name.trim(),
+          sex: input.gender,
+          birthDate: input.birth_date,
+          heightCm: input.height_cm,
+          baselineActivityMultiplier: input.baseline_activity_multiplier,
+        })
+        .where(eq(userProfiles.id, userId))
+        .returning({ id: userProfiles.id });
+
+      if (!updatedProfile) {
+        throw new HTTPException(404, {
+          message: 'User profile not found. Complete onboarding first.',
+        });
+      }
+
+      const [activeGoalRow] = await tx
+        .select({ id: userGoals.id })
+        .from(userGoals)
+        .where(and(eq(userGoals.userId, userId), eq(userGoals.isActive, true)))
+        .orderBy(desc(userGoals.createdAt))
+        .limit(1);
+
+      if (!activeGoalRow) {
+        throw new HTTPException(404, {
+          message: 'User profile not found. Complete onboarding first.',
+        });
+      }
+
+      await tx
+        .update(userGoals)
+        .set({
+          goalType: input.goal_type,
+          calorieAdjustment: input.calorie_adjustment,
+          proteinPerKg: input.protein_per_kg,
+          fatRatio: input.fat_ratio,
+        })
+        .where(eq(userGoals.id, activeGoalRow.id));
+    });
+
+    return this.getMe(userId, email);
+  }
+
+  async getBootstrapData(
+    userId: string,
+    days: number,
+    email?: string | null,
+    date?: string,
+  ): Promise<DashboardBootstrapResponse> {
+    const targetDate = date ?? getLocalDateString();
+
+    const [
+      profileRow,
+      [goalRow],
+      metricRows,
+      workoutRows,
+      nutritionRows,
+      [latestSyncRow],
+    ] = await Promise.all([
+      this.findProfileRow(userId),
+      this.db
+        .select()
+        .from(userGoals)
+        .where(and(eq(userGoals.userId, userId), eq(userGoals.isActive, true)))
+        .orderBy(desc(userGoals.createdAt))
+        .limit(1),
+      this.db
+        .select()
+        .from(bodyMetrics)
+        .where(eq(bodyMetrics.userId, userId))
+        .orderBy(asc(bodyMetrics.recordedDate), asc(bodyMetrics.createdAt)),
+      this.db
+        .select()
+        .from(workoutLogs)
+        .where(and(eq(workoutLogs.userId, userId), eq(workoutLogs.loggedDate, targetDate)))
+        .orderBy(asc(workoutLogs.loggedAt)),
+      this.db
+        .select()
+        .from(nutritionLogs)
+        .where(
+          and(eq(nutritionLogs.userId, userId), eq(nutritionLogs.loggedDate, targetDate)),
+        )
+        .orderBy(asc(nutritionLogs.loggedAt)),
+      this.db
+        .select()
+        .from(syncLogs)
+        .where(and(eq(syncLogs.userId, userId), eq(syncLogs.source, 'APPLE_HEALTH')))
+        .orderBy(desc(syncLogs.syncedAt))
+        .limit(1),
+    ]);
+
+    const syncStatus = buildSyncStatus(latestSyncRow);
+    const webhookKey = profileRow
+      ? buildWebhookKeyStatus(profileRow.webhookKeyPrefix, profileRow.webhookKeyHash)
+      : { configured: false, masked_key: null, prefix: null };
+
+    if (!profileRow || !goalRow) {
+      return {
+        me: {
+          userId,
+          email: email ?? null,
+          onboarded: false,
+          profile: null,
+          goal: null,
+          webhookKey,
+        },
+        dashboard: null,
+        trends: null,
+        syncStatus,
+      };
+    }
+
+    const allMetrics = metricRows.map(toBodyMetricDTO);
+    const latestMetric = selectLatestMetric(allMetrics, targetDate);
+    const profileDTO = toProfileDTO(profileRow);
+    const goalDTO = toGoalDTO(goalRow);
+
+    const me: MeResponseDTO = {
+      userId,
+      email: email ?? null,
+      onboarded: true,
+      profile: profileDTO,
+      goal: goalDTO,
+      webhookKey,
+    };
+
+    const dashboard = buildDashboardTodayResponse({
+      date: targetDate,
+      storageMode: 'postgres',
+      profile: profileDTO,
+      goal: goalDTO,
+      latestMetric,
+      workouts: workoutRows.map(toWorkoutLogDTO),
+      nutritionForDate: nutritionRows.map(toNutritionLogDTO),
+    });
+
+    const trends = computeBodyTrends(allMetrics, days);
+
+    return { me, dashboard, trends, syncStatus };
+  }
+
+  async getMonthlyCalendar(
+    userId: string,
+    month?: string,
+  ): Promise<MonthlyCalendarResponse> {
+    const { resolvedMonth, daysInMonth, monthStart, monthEnd, today } =
+      getMonthBounds(month);
+
+    const [{ profile, goal }, metricRows, workoutRows, nutritionRows] =
+      await Promise.all([
+        this.getProfileAndGoal(userId),
+        this.db
+          .select()
+          .from(bodyMetrics)
+          .where(
+            and(eq(bodyMetrics.userId, userId), lte(bodyMetrics.recordedDate, monthEnd)),
+          )
+          .orderBy(asc(bodyMetrics.recordedDate), asc(bodyMetrics.createdAt)),
+        this.db
+          .select()
+          .from(workoutLogs)
+          .where(
+            and(
+              eq(workoutLogs.userId, userId),
+              gte(workoutLogs.loggedDate, monthStart),
+              lte(workoutLogs.loggedDate, monthEnd),
+            ),
+          ),
+        this.db
+          .select()
+          .from(nutritionLogs)
+          .where(
+            and(
+              eq(nutritionLogs.userId, userId),
+              gte(nutritionLogs.loggedDate, monthStart),
+              lte(nutritionLogs.loggedDate, monthEnd),
+            ),
+          ),
+      ]);
+
+    const metricsUpToMonthEnd = metricRows.map(toBodyMetricDTO);
+    let earliestFallbackMetric: BodyMetricDTO | null = metricsUpToMonthEnd[0] ?? null;
+
+    if (!earliestFallbackMetric) {
+      const [earliestRow] = await this.db
+        .select()
+        .from(bodyMetrics)
+        .where(eq(bodyMetrics.userId, userId))
+        .orderBy(asc(bodyMetrics.recordedDate), asc(bodyMetrics.createdAt))
+        .limit(1);
+      earliestFallbackMetric = earliestRow ? toBodyMetricDTO(earliestRow) : null;
+    }
+
+    return buildMonthlyCalendarResponse({
+      month: resolvedMonth,
+      daysInMonth,
+      today,
+      profile,
+      goal,
+      metricsUpToMonthEnd,
+      earliestFallbackMetric,
+      workoutsInMonth: workoutRows.map(toWorkoutLogDTO),
+      nutritionInMonth: nutritionRows.map(toNutritionLogDTO),
+    });
   }
 }
 

@@ -1,6 +1,6 @@
-import { LayoutGrid, Plus, TrendingUp, User } from 'lucide-react';
+import { Calendar, LayoutGrid, Plus, TrendingUp, User } from 'lucide-react';
 
-export type MobileTab = 'dashboard' | 'trends' | 'profile';
+export type MobileTab = 'dashboard' | 'calendar' | 'trends' | 'profile';
 
 export interface MobileBottomNavProps {
   activeTab: MobileTab;
@@ -15,8 +15,13 @@ interface NavTabItem {
 }
 
 const LEFT_TABS: NavTabItem[] = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutGrid },
+  { id: 'dashboard', label: 'Today', icon: LayoutGrid },
+  { id: 'calendar', label: 'Calendar', icon: Calendar },
+];
+
+const RIGHT_TABS: NavTabItem[] = [
   { id: 'trends', label: 'Trends', icon: TrendingUp },
+  { id: 'profile', label: 'Profile', icon: User },
 ];
 
 export function MobileBottomNav({
@@ -24,33 +29,35 @@ export function MobileBottomNav({
   onSelectTab,
   onOpenQuickLog,
 }: MobileBottomNavProps) {
+  const renderTabButton = (item: NavTabItem) => {
+    const Icon = item.icon;
+    const isActive = activeTab === item.id;
+    return (
+      <button
+        key={item.id}
+        type="button"
+        onClick={() => onSelectTab(item.id)}
+        aria-current={isActive ? 'page' : undefined}
+        className={`relative flex min-h-[44px] flex-col items-center justify-center gap-0.5 rounded-2xl px-1.5 py-1 text-[10px] font-medium transition active:scale-95 ${
+          isActive ? 'text-[#2EE6A6]' : 'text-slate-400 hover:text-slate-200'
+        }`}
+      >
+        <Icon className="h-5 w-5" />
+        <span>{item.label}</span>
+        {isActive ? (
+          <span className="h-1 w-1 rounded-full bg-[#2EE6A6]" aria-hidden="true" />
+        ) : null}
+      </button>
+    );
+  };
+
   return (
     <nav
       aria-label="Mobile navigation"
       className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-[#0D1017]/92 pb-[env(safe-area-inset-bottom)] backdrop-blur-2xl md:hidden"
     >
-      <div className="mx-auto grid max-w-md grid-cols-4 items-center px-2 py-1.5">
-        {LEFT_TABS.map((item) => {
-          const Icon = item.icon;
-          const isActive = activeTab === item.id;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => onSelectTab(item.id)}
-              aria-current={isActive ? 'page' : undefined}
-              className={`relative flex min-h-[44px] flex-col items-center justify-center gap-0.5 rounded-2xl px-2 py-1 text-[11px] font-medium transition active:scale-95 ${
-                isActive ? 'text-[#2EE6A6]' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Icon className="h-5 w-5" />
-              <span>{item.label}</span>
-              {isActive ? (
-                <span className="h-1 w-1 rounded-full bg-[#2EE6A6]" aria-hidden="true" />
-              ) : null}
-            </button>
-          );
-        })}
+      <div className="mx-auto grid max-w-md grid-cols-5 items-center px-1.5 py-1.5">
+        {LEFT_TABS.map(renderTabButton)}
 
         {/* Prominent Center Quick-Log Action */}
         <div className="flex flex-col items-center justify-center">
@@ -65,21 +72,7 @@ export function MobileBottomNav({
           <span className="mt-0.5 text-[10px] font-semibold text-slate-300">Log</span>
         </div>
 
-        {/* Profile Tab */}
-        <button
-          type="button"
-          onClick={() => onSelectTab('profile')}
-          aria-current={activeTab === 'profile' ? 'page' : undefined}
-          className={`relative flex min-h-[44px] flex-col items-center justify-center gap-0.5 rounded-2xl px-2 py-1 text-[11px] font-medium transition active:scale-95 ${
-            activeTab === 'profile' ? 'text-[#2EE6A6]' : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <User className="h-5 w-5" />
-          <span>Profile</span>
-          {activeTab === 'profile' ? (
-            <span className="h-1 w-1 rounded-full bg-[#2EE6A6]" aria-hidden="true" />
-          ) : null}
-        </button>
+        {RIGHT_TABS.map(renderTabButton)}
       </div>
     </nav>
   );

@@ -40,9 +40,10 @@ export function getDb(): Database | null {
   cachedUrl = url;
   cachedClient = postgres(url, {
     prepare: false,
-    max: process.env.VERCEL ? 1 : 5,
-    idle_timeout: 20,
-    connect_timeout: 15,
+    max: 5,
+    idle_timeout: 10,
+    max_lifetime: 300,
+    connect_timeout: 10,
     ...(shouldRequireSsl(url) ? { ssl: 'require' } : {}),
   });
   cachedDb = drizzle(cachedClient, { schema });

@@ -14,7 +14,9 @@ import {
   LogOut,
   RefreshCw,
   Scale,
+  Settings,
   ShieldCheck,
+  SlidersHorizontal,
   Target,
   User,
 } from 'lucide-react';
@@ -31,6 +33,8 @@ export interface ProfileSummaryCardProps {
   loading?: boolean;
   onLogMetricClick: () => void;
   onRefresh: () => void;
+  onEditProfileClick?: () => void;
+  onManageSupplementsClick?: () => void;
   syncStatus?: SyncStatusDTO;
   recordedDate?: string;
   onSyncSuccess?: () => Promise<void> | void;
@@ -50,6 +54,8 @@ export function ProfileSummaryCard({
   loading = false,
   onLogMetricClick,
   onRefresh,
+  onEditProfileClick,
+  onManageSupplementsClick,
   syncStatus,
   recordedDate,
   onSyncSuccess,
@@ -200,6 +206,17 @@ export function ProfileSummaryCard({
             </button>
           </div>
 
+          {onEditProfileClick ? (
+            <button
+              type="button"
+              onClick={onEditProfileClick}
+              className="inline-flex min-h-[44px] w-full cursor-pointer items-center justify-center gap-2 rounded-2xl border border-[#38BDF8]/30 bg-[#38BDF8]/10 px-4 py-2.5 text-xs font-semibold text-[#38BDF8] transition hover:bg-[#38BDF8]/20 active:scale-[0.98]"
+            >
+              <Settings className="h-4 w-4" />
+              <span>Edit Profile &amp; Goals</span>
+            </button>
+          ) : null}
+
           {onSignOut ? (
             <button
               type="button"
@@ -214,15 +231,37 @@ export function ProfileSummaryCard({
         </div>
       </BentoCard>
 
-      <div className="flex items-center justify-between rounded-2xl border border-white/5 bg-[#141720] px-4 py-3 text-xs text-slate-400">
-        <div className="flex items-center gap-2">
-          <Activity className="h-4 w-4 text-[#38BDF8]" />
-          <span>Active Supplement Stack</span>
+      {onManageSupplementsClick ? (
+        <button
+          type="button"
+          onClick={onManageSupplementsClick}
+          className="flex min-h-[44px] w-full cursor-pointer items-center justify-between rounded-2xl border border-white/10 bg-[#141720] px-4 py-3 text-xs text-slate-300 transition hover:border-[#2EE6A6]/35 hover:bg-white/[0.04]"
+        >
+          <div className="flex items-center gap-2">
+            <Activity className="h-4 w-4 text-[#38BDF8]" />
+            <span>Active Supplement Stack</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="tabular-nums font-semibold text-white">
+              {profile.supplementStack.length} items
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full border border-[#2EE6A6]/30 bg-[#2EE6A6]/12 px-2.5 py-0.5 text-[11px] font-semibold text-[#2EE6A6]">
+              <SlidersHorizontal className="h-3 w-3" />
+              Manage Stack
+            </span>
+          </div>
+        </button>
+      ) : (
+        <div className="flex items-center justify-between rounded-2xl border border-white/5 bg-[#141720] px-4 py-3 text-xs text-slate-400">
+          <div className="flex items-center gap-2">
+            <Activity className="h-4 w-4 text-[#38BDF8]" />
+            <span>Active Supplement Stack</span>
+          </div>
+          <span className="tabular-nums font-semibold text-white">
+            {profile.supplementStack.length} items configured
+          </span>
         </div>
-        <span className="tabular-nums font-semibold text-white">
-          {profile.supplementStack.length} items configured
-        </span>
-      </div>
+      )}
 
       {syncStatus && onSyncSuccess ? (
         <AppleShortcutsCard

@@ -170,10 +170,12 @@ export function verifyHs256Jwt(
 
 const SUPABASE_AUTH_CACHE_TTL_MS = 60_000;
 const SUPABASE_AUTH_CACHE_MAX_ENTRIES = 500;
+const SUPABASE_AUTH_TIMEOUT_MS = 8_000;
 const supabaseTokenCache = new Map<
   string,
   { user: VerifiedTokenUser; expiresAt: number }
 >();
+const inFlightVerifications = new Map<string, Promise<VerifiedTokenUser | null>>();
 
 function getTokenExpMs(token: string): number | null {
   const parts = token.split('.');
@@ -200,50 +202,64 @@ async function verifyWithSupabaseApi(
     supabaseTokenCache.delete(cacheKey);
   }
 
-  const baseUrl = supabaseUrl.replace(/\/+$/, '');
-  try {
-    const response = await fetch(`${baseUrl}/auth/v1/user`, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        apikey: supabaseAnonKey,
-      },
-    });
-    if (!response.ok) {
-      return null;
-    }
-
-    const data = (await response.json()) as Record<string, unknown> | null;
-    if (!data || typeof data !== 'object') {
-      return null;
-    }
-
-    const userId = nonEmptyString(data.id);
-    if (!userId) {
-      return null;
-    }
-
-    const user = extractVerifiedUser(userId, data);
-    const tokenExpMs = getTokenExpMs(token);
-    const expiresAt =
-      tokenExpMs !== null
-        ? Math.min(now + SUPABASE_AUTH_CACHE_TTL_MS, tokenExpMs)
-        : now + SUPABASE_AUTH_CACHE_TTL_MS;
-
-    if (expiresAt > now) {
-      if (supabaseTokenCache.size >= SUPABASE_AUTH_CACHE_MAX_ENTRIES) {
-        const oldestKey = supabaseTokenCache.keys().next().value;
-        if (oldestKey) {
-          supabaseTokenCache.delete(oldestKey);
-        }
-      }
-      supabaseTokenCache.set(cacheKey, { user, expiresAt });
-    }
-
-    return user;
-  } catch {
-    return null;
+  const inFlight = inFlightVerifications.get(cacheKey);
+  if (inFlight) {
+    return inFlight;
   }
+
+  const baseUrl = supabaseUrl.replace(/\/+$/, '');
+  const verificationPromise = (async (): Promise<VerifiedTokenUser | null> => {
+    try {
+      const response = await fetch(`${baseUrl}/auth/v1/user`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          apikey: supabaseAnonKey,
+        },
+        signal: AbortSignal.timeout(SUPABASE_AUTH_TIMEOUT_MS),
+      });
+      if (!response.ok) {
+        return null;
+      }
+
+      const data = (await response.json()) as Record<string, unknown> | null;
+      if (!data || typeof data !== 'object') {
+        return null;
+      }
+
+      const userId = nonEmptyString(data.id);
+      if (!userId) {
+        return null;
+      }
+
+      const user = extractVerifiedUser(userId, data);
+      const verifiedAt = Date.now();
+      const tokenExpMs = getTokenExpMs(token);
+      const expiresAt =
+        tokenExpMs !== null
+          ? Math.min(verifiedAt + SUPABASE_AUTH_CACHE_TTL_MS, tokenExpMs)
+          : verifiedAt + SUPABASE_AUTH_CACHE_TTL_MS;
+
+      if (expiresAt > verifiedAt) {
+        if (supabaseTokenCache.size >= SUPABASE_AUTH_CACHE_MAX_ENTRIES) {
+          const oldestKey = supabaseTokenCache.keys().next().value;
+          if (oldestKey) {
+            supabaseTokenCache.delete(oldestKey);
+          }
+        }
+        supabaseTokenCache.set(cacheKey, { user, expiresAt });
+      }
+
+      return user;
+    } catch {
+      return null;
+    }
+  })().finally(() => {
+    inFlightVerifications.delete(cacheKey);
+  });
+
+  inFlightVerifications.set(cacheKey, verificationPromise);
+  return verificationPromise;
 }
 
 /**

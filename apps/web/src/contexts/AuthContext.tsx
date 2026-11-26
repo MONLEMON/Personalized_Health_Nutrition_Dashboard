@@ -9,8 +9,9 @@ import {
   type ReactNode,
 } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
-import type { MeResponseDTO } from '@health-dash/shared';
-import { ApiError, configureApiAuth, fetchMe } from '../lib/api';
+import type { DashboardBootstrapResponse, MeResponseDTO } from '@health-dash/shared';
+import { ApiError, configureApiAuth, fetchDashboardBootstrap } from '../lib/api';
+import { clearBootstrapCache, readBootstrapCache, writeBootstrapCache } from '../lib/cache';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 
 export interface SignUpResult {
@@ -26,6 +27,7 @@ export interface AuthContextValue {
   session: Session | null;
   user: User | null;
   me: MeResponseDTO | null;
+  bootstrap: DashboardBootstrapResponse | null;
   authLoading: boolean;
   meLoading: boolean;
   meError: string | null;
@@ -36,6 +38,7 @@ export interface AuthContextValue {
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   refreshMe: () => Promise<MeResponseDTO | null>;
+  updateBootstrapState: (next: Partial<DashboardBootstrapResponse>) => void;
   clearAuthError: () => void;
 }
 
@@ -47,6 +50,7 @@ const SUPABASE_MISSING_MSG =
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [me, setMe] = useState<MeResponseDTO | null>(null);
+  const [bootstrap, setBootstrap] = useState<DashboardBootstrapResponse | null>(null);
   const [authLoading, setAuthLoading] = useState<boolean>(isSupabaseConfigured);
   const [meLoading, setMeLoading] = useState<boolean>(false);
   const [meError, setMeError] = useState<string | null>(null);
@@ -54,24 +58,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const sessionRef = useRef<Session | null>(null);
   const meRef = useRef<MeResponseDTO | null>(null);
+  const bootstrapRef = useRef<DashboardBootstrapResponse | null>(null);
   const loadedTokenRef = useRef<string | null>(null);
   const inFlightTokenRef = useRef<string | null>(null);
   const signingOutRef = useRef<boolean>(false);
 
   meRef.current = me;
+  bootstrapRef.current = bootstrap;
+
+  const updateBootstrapState = useCallback((next: Partial<DashboardBootstrapResponse>) => {
+    if (next.me) {
+      setMe(next.me);
+    }
+
+    setBootstrap((prev) => {
+      let merged: DashboardBootstrapResponse | null = null;
+      if (prev) {
+        merged = { ...prev, ...next };
+      } else if (next.me && next.syncStatus) {
+        merged = {
+          me: next.me,
+          dashboard: next.dashboard ?? null,
+          trends: next.trends ?? null,
+          syncStatus: next.syncStatus,
+        };
+      }
+
+      const uid = sessionRef.current?.user.id;
+      if (merged && uid) {
+        writeBootstrapCache(uid, merged);
+      }
+      return merged;
+    });
+  }, []);
 
   const performSignOut = useCallback(async (reason?: string) => {
     if (signingOutRef.current) return;
     signingOutRef.current = true;
+    const prevUserId = sessionRef.current?.user.id;
     try {
       sessionRef.current = null;
       loadedTokenRef.current = null;
       inFlightTokenRef.current = null;
       setSession(null);
       setMe(null);
+      setBootstrap(null);
       setMeError(null);
       setMeLoading(false);
       setAuthError(reason ?? null);
+      clearBootstrapCache(prevUserId ?? null);
       if (typeof window !== 'undefined') {
         try {
           window.sessionStorage.removeItem('vitalpulse_webhook_key');
@@ -109,26 +144,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const activeSession = sessionRef.current;
     if (!activeSession) {
       setMe(null);
+      setBootstrap(null);
       setMeError(null);
       setMeLoading(false);
       return null;
     }
 
+    const userId = activeSession.user.id;
     const token = activeSession.access_token;
     inFlightTokenRef.current = token;
     setMeLoading(true);
     setMeError(null);
 
     try {
-      const nextMe = await fetchMe();
-      if (sessionRef.current?.access_token !== token) {
+      const nextBootstrap = await fetchDashboardBootstrap(30);
+      if (!sessionRef.current || sessionRef.current.user.id !== userId) {
         return null;
       }
-      loadedTokenRef.current = token;
-      setMe(nextMe);
-      return nextMe;
+      loadedTokenRef.current = sessionRef.current.access_token;
+      setMe(nextBootstrap.me);
+      setBootstrap(nextBootstrap);
+      writeBootstrapCache(userId, nextBootstrap);
+      return nextBootstrap.me;
     } catch (err) {
-      if (sessionRef.current?.access_token !== token) {
+      if (!sessionRef.current || sessionRef.current.user.id !== userId) {
         return null;
       }
       if (err instanceof ApiError && err.status === 401) {
@@ -166,6 +205,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         loadedTokenRef.current = null;
         inFlightTokenRef.current = null;
         setMe(null);
+        setBootstrap(null);
         setMeError(null);
         setMeLoading(false);
         return;
@@ -175,9 +215,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!isSameUser) {
         loadedTokenRef.current = null;
         inFlightTokenRef.current = null;
-        setMe(null);
-        setMeError(null);
-      } else if (meRef.current) {
+        const cached = readBootstrapCache(nextSession.user.id);
+        if (cached) {
+          // Hydrate immediately from per-user cache, then refresh live data in background.
+          setBootstrap(cached);
+          setMe(cached.me);
+          setMeError(null);
+        } else {
+          setBootstrap(null);
+          setMe(null);
+          setMeError(null);
+        }
+      } else if (meRef.current && bootstrapRef.current) {
         // Token refresh for an already loaded user keeps existing profile without flicker.
         loadedTokenRef.current = nextSession.access_token;
         return;
@@ -299,6 +348,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       user: session?.user ?? null,
       me,
+      bootstrap,
       authLoading,
       meLoading,
       meError,
@@ -309,11 +359,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signInWithGoogle,
       signOut,
       refreshMe,
+      updateBootstrapState,
       clearAuthError,
     }),
     [
       session,
       me,
+      bootstrap,
       authLoading,
       meLoading,
       meError,
@@ -323,6 +375,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signInWithGoogle,
       signOut,
       refreshMe,
+      updateBootstrapState,
       clearAuthError,
     ],
   );

@@ -1,7 +1,12 @@
 import { Hono, type MiddlewareHandler } from 'hono';
-import { OnboardingProfileSchema } from '@health-dash/shared';
+import {
+  OnboardingProfileSchema,
+  UpdateProfileSettingsSchema,
+  UpdateSupplementsSchema,
+} from '@health-dash/shared';
 import { getRepository, type HealthRepository } from '../db/repository';
 import { createAuthMiddleware, type AuthAppEnv } from '../middleware/auth';
+import { validateJsonBody } from './validation';
 
 /**
  * Creates authenticated account, onboarding, and personal webhook-key settings routes.
@@ -60,6 +65,29 @@ export function createMeRoutes(
     const userId = c.get('userId');
     const key = await resolveRepo().generateWebhookKey(userId);
     return c.json(key, 201);
+  });
+
+  router.put('/settings/supplements', async (c) => {
+    const validated = await validateJsonBody(c, UpdateSupplementsSchema);
+    if (!validated.ok) return validated.response;
+
+    const supplementStack = await resolveRepo().updateSupplementStack(
+      c.get('userId'),
+      validated.data.supplements,
+    );
+    return c.json({ supplementStack }, 200);
+  });
+
+  router.patch('/settings/profile', async (c) => {
+    const validated = await validateJsonBody(c, UpdateProfileSettingsSchema);
+    if (!validated.ok) return validated.response;
+
+    const me = await resolveRepo().updateProfileSettings(
+      c.get('userId'),
+      validated.data,
+      c.get('userEmail') ?? null,
+    );
+    return c.json(me, 200);
   });
 
   return router;

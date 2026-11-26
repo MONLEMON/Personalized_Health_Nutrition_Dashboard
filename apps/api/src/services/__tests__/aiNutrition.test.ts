@@ -203,7 +203,7 @@ describe('parseNutritionWithGemini Unit & Error-Handling Tests', () => {
     expect(err.message).toContain('[REDACTED]');
   });
 
-  it('automatically falls back to gemini-flash-lite-latest when primary model hits 503 UNAVAILABLE', async () => {
+  it('automatically falls back to gemini-flash-latest when primary model hits 503 UNAVAILABLE', async () => {
     loadRootEnv();
     const prevModel = process.env.GEMINI_MODEL;
     delete process.env.GEMINI_MODEL;
@@ -240,7 +240,7 @@ describe('parseNutritionWithGemini Unit & Error-Handling Tests', () => {
         { generateContent: fallbackMock },
       );
 
-      expect(calledModels).toEqual(['gemini-3.8-flash', 'gemini-flash-lite-latest']);
+      expect(calledModels).toEqual(['gemini-3.8-flash', 'gemini-flash-latest']);
       expect(result.suggested_meal_type).toBe('lunch');
       expect(result.items).toHaveLength(1);
       expect(result.items[0].food_name).toBe('ข้าวสวย');
