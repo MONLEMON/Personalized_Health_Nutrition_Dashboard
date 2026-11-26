@@ -114,7 +114,14 @@ export function ProfileSummaryCard({
               <div className="mt-0.5 break-words text-xs text-slate-400">
                 {profile.age} yrs · {profile.heightCm} cm ·{' '}
                 <span className="capitalize">{profile.sex}</span> ·{' '}
-                <span className="tabular-nums">×{profile.baselineActivityMultiplier} NEAT</span>
+                <span className="tabular-nums">
+                  ×{profile.baselineActivityMultiplier}{' '}
+                  {profile.tdeeMode === 'FIXED_STATIC'
+                    ? 'Static TDEE'
+                    : profile.tdeeMode === 'APPLE_HEALTH_DYNAMIC'
+                      ? 'Watch Base'
+                      : 'NEAT'}
+                </span>
               </div>
             </div>
           </div>
@@ -178,7 +185,9 @@ export function ProfileSummaryCard({
           <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/5 bg-[#0F131C]/75 px-3.5 py-2.5 text-xs">
             <div className="flex min-w-0 items-center gap-2 text-slate-300">
               <Flame className="h-4 w-4 shrink-0 text-[#FFB020]" />
-              <span>Dynamic TDEE / Target</span>
+              <span>
+                {energy.tdeeMode === 'FIXED_STATIC' ? 'Static TDEE / Target' : 'Dynamic TDEE / Target'}
+              </span>
             </div>
             <span className="tabular-nums font-semibold text-white">
               {energy.dynamicTdee.toLocaleString()} / {energy.targetCalories.toLocaleString()} kcal

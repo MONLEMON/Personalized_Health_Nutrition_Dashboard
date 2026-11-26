@@ -3,6 +3,7 @@ import {
   OnboardingProfileSchema,
   type GoalType,
   type Sex,
+  type TdeeMode,
 } from '@health-dash/shared';
 import {
   Activity,
@@ -11,6 +12,7 @@ import {
   ArrowRight,
   Check,
   Flame,
+  Gauge,
   Loader2,
   LogOut,
   Scale,
@@ -21,16 +23,59 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { submitOnboarding } from '../lib/api';
 
-const ACTIVITY_OPTIONS: Array<{
-  value: number;
+const TDEE_MODE_OPTIONS: Array<{
+  value: TdeeMode;
   title: string;
-  subtitle: string;
+  badge: string;
+  defaultMultiplier: number;
+  description: string;
 }> = [
-  { value: 1.2, title: 'Sedentary (1.2×)', subtitle: 'Desk work, minimal daily movement' },
-  { value: 1.35, title: 'Light / Desk + Gym (1.35×)', subtitle: 'Office routine + 3–4 workouts/wk' },
-  { value: 1.55, title: 'Moderate (1.55×)', subtitle: 'Active days or daily training' },
-  { value: 1.75, title: 'High (1.75×)', subtitle: 'Physical job or endurance volume' },
+  {
+    value: 'APPLE_HEALTH_DYNAMIC',
+    title: 'Apple Health Dynamic',
+    badge: 'Watch All-Day',
+    defaultMultiplier: 1.1,
+    description: 'ฐาน 1.1× (BMR + ย่อยอาหาร) + บวก Active Energy จาก Apple Watch ทั้งวัน (ไม่นับซ้ำ NEAT)',
+  },
+  {
+    value: 'MANUAL_WORKOUT_DYNAMIC',
+    title: 'Workout Dynamic',
+    badge: 'Manual Log',
+    defaultMultiplier: 1.25,
+    description: 'ฐาน NEAT 1.2–1.3× (ชีวิตประจำวัน) + บวกเฉพาะ Workout kcal ที่บันทึก',
+  },
+  {
+    value: 'FIXED_STATIC',
+    title: 'Fixed Static TDEE',
+    badge: 'Constant',
+    defaultMultiplier: 1.55,
+    description: 'ใช้ตัวคูณเฉลี่ยรวมการซ้อมทั้งสัปดาห์ เป้าแคลอรีคงที่ ไม่บวก Active รายวันเพิ่ม',
+  },
 ];
+
+const ACTIVITY_OPTIONS_BY_MODE: Record<
+  TdeeMode,
+  Array<{ value: number; title: string; subtitle: string }>
+> = {
+  APPLE_HEALTH_DYNAMIC: [
+    { value: 1.0, title: '1.0× BMR Only', subtitle: 'Watch counts 100% of daily steps + workouts' },
+    { value: 1.1, title: '1.1× BMR + TEF', subtitle: 'Recommended when syncing Apple Watch Active Energy' },
+    { value: 1.15, title: '1.15× Light Base', subtitle: 'Desk day with partial Apple Watch wear' },
+    { value: 1.2, title: '1.2× Active Base', subtitle: 'Active job + partial watch tracking' },
+  ],
+  MANUAL_WORKOUT_DYNAMIC: [
+    { value: 1.2, title: '1.2× Sedentary NEAT', subtitle: 'Desk work, low daily steps (excl. workouts)' },
+    { value: 1.25, title: '1.25× Light NEAT', subtitle: 'Office routine + 5k–7k steps (excl. workouts)' },
+    { value: 1.3, title: '1.3× Moderate NEAT', subtitle: 'Active daily steps 8k+ (excl. workouts)' },
+    { value: 1.4, title: '1.4× Physical NEAT', subtitle: 'On-your-feet daily work (excl. workouts)' },
+  ],
+  FIXED_STATIC: [
+    { value: 1.2, title: '1.2× Sedentary', subtitle: 'Minimal structured training' },
+    { value: 1.35, title: '1.35× Light', subtitle: '1–3 workouts/week included in baseline' },
+    { value: 1.55, title: '1.55× Moderate', subtitle: '3–5 workouts/week included in baseline' },
+    { value: 1.725, title: '1.725× High', subtitle: '6–7 workouts/week or endurance volume' },
+  ],
+};
 
 const GOAL_OPTIONS: Array<{
   value: GoalType;
@@ -146,7 +191,8 @@ export function OnboardingWizard() {
   const [weightKg, setWeightKg] = useState('');
   const [bodyFatPct, setBodyFatPct] = useState('');
   const [skeletalMuscleKg, setSkeletalMuscleKg] = useState('');
-  const [activityMultiplier, setActivityMultiplier] = useState<number>(1.35);
+  const [tdeeMode, setTdeeMode] = useState<TdeeMode>('MANUAL_WORKOUT_DYNAMIC');
+  const [activityMultiplier, setActivityMultiplier] = useState<number>(1.25);
 
   // Step 3: Goal & Calorie Target
   const [goalType, setGoalType] = useState<GoalType>('CUT');
@@ -233,6 +279,7 @@ export function OnboardingWizard() {
       body_fat_pct: bodyFatPct.trim() === '' ? undefined : bodyFatPct,
       skeletal_muscle_kg: skeletalMuscleKg.trim() === '' ? undefined : skeletalMuscleKg,
       baseline_activity_multiplier: activityMultiplier,
+      tdee_mode: tdeeMode,
       goal_type: goalType,
       calorie_adjustment: calorieAdjustment,
     });
@@ -474,40 +521,85 @@ export function OnboardingWizard() {
                   </span>
                 </div>
 
-                <div>
-                  <span className="text-xs font-medium text-slate-300">
-                    Baseline Activity Multiplier
-                  </span>
-                  <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    {ACTIVITY_OPTIONS.map((opt) => {
-                      const active = activityMultiplier === opt.value;
-                      return (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          onClick={() => setActivityMultiplier(opt.value)}
-                          className={`flex min-h-[44px] min-w-0 cursor-pointer flex-col items-start justify-center rounded-2xl border px-3.5 py-2.5 text-left transition ${
-                            active
-                              ? 'border-[#2EE6A6]/60 bg-[#2EE6A6]/12'
-                              : 'border-white/10 bg-[#0A0C10] hover:bg-white/[0.04]'
-                          }`}
-                        >
-                          <div className="flex w-full min-w-0 items-center justify-between gap-2">
-                            <span
-                              className={`min-w-0 break-words text-xs font-semibold ${
-                                active ? 'text-[#2EE6A6]' : 'text-white'
-                              }`}
-                            >
-                              {opt.title}
+                <div className="space-y-3">
+                  <div>
+                    <span className="flex items-center gap-1.5 text-xs font-medium text-slate-300">
+                      <Gauge className="h-3.5 w-3.5 text-[#38BDF8]" />
+                      TDEE Calculation Mode
+                    </span>
+                    <div className="mt-2 grid grid-cols-1 gap-2">
+                      {TDEE_MODE_OPTIONS.map((modeOpt) => {
+                        const active = tdeeMode === modeOpt.value;
+                        return (
+                          <button
+                            key={modeOpt.value}
+                            type="button"
+                            onClick={() => {
+                              setTdeeMode(modeOpt.value);
+                              setActivityMultiplier(modeOpt.defaultMultiplier);
+                            }}
+                            className={`flex min-h-[44px] min-w-0 cursor-pointer flex-col items-start justify-center rounded-2xl border px-3.5 py-2.5 text-left transition ${
+                              active
+                                ? 'border-[#38BDF8]/60 bg-[#38BDF8]/12'
+                                : 'border-white/10 bg-[#0A0C10] hover:bg-white/[0.04]'
+                            }`}
+                          >
+                            <div className="flex w-full min-w-0 items-center justify-between gap-2">
+                              <span
+                                className={`min-w-0 text-xs font-semibold ${
+                                  active ? 'text-[#38BDF8]' : 'text-white'
+                                }`}
+                              >
+                                {modeOpt.title}
+                              </span>
+                              <span className="shrink-0 rounded-full border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] font-semibold text-slate-300">
+                                {modeOpt.badge}
+                              </span>
+                            </div>
+                            <span className="mt-0.5 text-[11px] leading-snug text-slate-400">
+                              {modeOpt.description}
                             </span>
-                            {active ? (
-                              <Check className="h-3.5 w-3.5 shrink-0 text-[#2EE6A6]" />
-                            ) : null}
-                          </div>
-                          <span className="mt-0.5 text-[11px] text-slate-400">{opt.subtitle}</span>
-                        </button>
-                      );
-                    })}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="text-xs font-medium text-slate-300">
+                      Baseline Activity Multiplier
+                    </span>
+                    <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      {ACTIVITY_OPTIONS_BY_MODE[tdeeMode].map((opt) => {
+                        const active = activityMultiplier === opt.value;
+                        return (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => setActivityMultiplier(opt.value)}
+                            className={`flex min-h-[44px] min-w-0 cursor-pointer flex-col items-start justify-center rounded-2xl border px-3.5 py-2.5 text-left transition ${
+                              active
+                                ? 'border-[#2EE6A6]/60 bg-[#2EE6A6]/12'
+                                : 'border-white/10 bg-[#0A0C10] hover:bg-white/[0.04]'
+                            }`}
+                          >
+                            <div className="flex w-full min-w-0 items-center justify-between gap-2">
+                              <span
+                                className={`min-w-0 break-words text-xs font-semibold ${
+                                  active ? 'text-[#2EE6A6]' : 'text-white'
+                                }`}
+                              >
+                                {opt.title}
+                              </span>
+                              {active ? (
+                                <Check className="h-3.5 w-3.5 shrink-0 text-[#2EE6A6]" />
+                              ) : null}
+                            </div>
+                            <span className="mt-0.5 text-[11px] text-slate-400">{opt.subtitle}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               </div>

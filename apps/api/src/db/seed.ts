@@ -32,6 +32,7 @@ async function main() {
       birthDate: dataset.profile.birthDate,
       heightCm: dataset.profile.heightCm,
       baselineActivityMultiplier: dataset.profile.baselineActivityMultiplier,
+      tdeeMode: dataset.profile.tdeeMode ?? 'MANUAL_WORKOUT_DYNAMIC',
       supplementStack: dataset.profile.supplementStack,
     });
 

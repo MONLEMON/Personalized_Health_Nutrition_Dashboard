@@ -7,6 +7,7 @@ import {
   type CalorieCyclingMode,
   type GoalType,
   type Sex,
+  type TdeeMode,
   type UpdateProfileSettingsInput,
   type UserGoalDTO,
   type UserProfileDTO,
@@ -16,6 +17,7 @@ import {
   AlertCircle,
   Check,
   Flame,
+  Gauge,
   Loader2,
   Repeat,
   SlidersHorizontal,
@@ -35,12 +37,55 @@ export interface ProfileSettingsModalProps {
   onSave: (input: UpdateProfileSettingsInput) => Promise<void>;
 }
 
-const ACTIVITY_PRESETS: Array<{ value: number; label: string }> = [
-  { value: 1.2, label: '1.2 Sedentary' },
-  { value: 1.35, label: '1.35 Light' },
-  { value: 1.55, label: '1.55 Moderate' },
-  { value: 1.725, label: '1.725 High' },
+const TDEE_MODE_OPTIONS: Array<{
+  value: TdeeMode;
+  title: string;
+  defaultMultiplier: number;
+  summary: string;
+}> = [
+  {
+    value: 'APPLE_HEALTH_DYNAMIC',
+    title: 'Apple Health Dynamic',
+    defaultMultiplier: 1.1,
+    summary: 'Base 1.1× (BMR + TEF) + Watch All-Day Active Energy (no NEAT double-counting)',
+  },
+  {
+    value: 'MANUAL_WORKOUT_DYNAMIC',
+    title: 'Workout Dynamic',
+    defaultMultiplier: 1.25,
+    summary: 'Base NEAT 1.2–1.3× (daily life) + logged Workout calories added daily',
+  },
+  {
+    value: 'FIXED_STATIC',
+    title: 'Fixed Static TDEE',
+    defaultMultiplier: 1.55,
+    summary: 'All-in weekly multiplier (1.35–1.725×); active burn tracked without shifting target',
+  },
 ];
+
+const ACTIVITY_PRESETS_BY_MODE: Record<
+  TdeeMode,
+  Array<{ value: number; label: string }>
+> = {
+  APPLE_HEALTH_DYNAMIC: [
+    { value: 1.0, label: '1.0 BMR Only' },
+    { value: 1.1, label: '1.1 BMR+TEF' },
+    { value: 1.15, label: '1.15 Light Base' },
+    { value: 1.2, label: '1.2 Active Base' },
+  ],
+  MANUAL_WORKOUT_DYNAMIC: [
+    { value: 1.2, label: '1.2 Sedentary NEAT' },
+    { value: 1.25, label: '1.25 Desk NEAT' },
+    { value: 1.3, label: '1.3 Walk NEAT' },
+    { value: 1.4, label: '1.4 Active Job' },
+  ],
+  FIXED_STATIC: [
+    { value: 1.2, label: '1.2 Sedentary' },
+    { value: 1.35, label: '1.35 Light (1-3d)' },
+    { value: 1.55, label: '1.55 Mod (3-5d)' },
+    { value: 1.725, label: '1.725 High (6-7d)' },
+  ],
+};
 
 const GOAL_TYPES: Array<{
   value: GoalType;
@@ -148,6 +193,7 @@ function computeLivePreview(params: {
   birthDate: string;
   heightCm: string;
   activityMultiplier: string;
+  tdeeMode: TdeeMode;
   calorieAdjustment: string;
   proteinPerKg: string;
   fatRatioPct: string;
@@ -165,7 +211,7 @@ function computeLivePreview(params: {
     !Number.isFinite(height) ||
     height < 80 ||
     !Number.isFinite(multiplier) ||
-    multiplier < 1.1 ||
+    multiplier < 1.0 ||
     !Number.isFinite(proteinPerKg) ||
     !Number.isFinite(fatRatio)
   ) {
@@ -192,14 +238,16 @@ function computeLivePreview(params: {
     formula = 'Mifflin-St Jeor';
   }
 
-  const dynamicTdee = Math.round(bmr * multiplier + params.activeCalories);
+  const effectiveActive =
+    params.tdeeMode === 'FIXED_STATIC' ? 0 : Math.round(params.activeCalories);
+  const dynamicTdee = Math.round(bmr * multiplier + effectiveActive);
   const safeAdj = Number.isFinite(adjustment) ? Math.round(adjustment) : 0;
   const targetCalories = Math.max(1200, Math.round(dynamicTdee + safeAdj));
   const proteinG = Math.round(params.weightKg * proteinPerKg);
   const fatG = Math.round((targetCalories * fatRatio) / 9);
   const carbsG = Math.max(0, Math.round((targetCalories - proteinG * 4 - fatG * 9) / 4));
 
-  return { bmr, formula, dynamicTdee, targetCalories, proteinG, carbsG, fatG };
+  return { bmr, formula, effectiveActive, dynamicTdee, targetCalories, proteinG, carbsG, fatG };
 }
 
 export function ProfileSettingsModal({
@@ -218,6 +266,9 @@ export function ProfileSettingsModal({
   const [heightCm, setHeightCm] = useState(String(profile.heightCm));
   const [activityMultiplier, setActivityMultiplier] = useState(
     String(profile.baselineActivityMultiplier),
+  );
+  const [tdeeMode, setTdeeMode] = useState<TdeeMode>(
+    profile.tdeeMode ?? 'MANUAL_WORKOUT_DYNAMIC',
   );
   const [goalType, setGoalType] = useState<GoalType>(goal.goalType);
   const [calorieAdjustment, setCalorieAdjustment] = useState(String(goal.calorieAdjustment));
@@ -256,6 +307,7 @@ export function ProfileSettingsModal({
       setBirthDate(profile.birthDate);
       setHeightCm(String(profile.heightCm));
       setActivityMultiplier(String(profile.baselineActivityMultiplier));
+      setTdeeMode(profile.tdeeMode ?? 'MANUAL_WORKOUT_DYNAMIC');
       setGoalType(goal.goalType);
       setCalorieAdjustment(String(goal.calorieAdjustment));
       setProteinPerKg(String(goal.proteinPerKg));
@@ -293,6 +345,7 @@ export function ProfileSettingsModal({
         birthDate,
         heightCm,
         activityMultiplier,
+        tdeeMode,
         calorieAdjustment,
         proteinPerKg,
         fatRatioPct,
@@ -305,6 +358,7 @@ export function ProfileSettingsModal({
       birthDate,
       heightCm,
       activityMultiplier,
+      tdeeMode,
       calorieAdjustment,
       proteinPerKg,
       fatRatioPct,
@@ -444,6 +498,7 @@ export function ProfileSettingsModal({
       birth_date: birthDate,
       height_cm: heightCm,
       baseline_activity_multiplier: activityMultiplier,
+      tdee_mode: tdeeMode,
       goal_type: goalType,
       calorie_adjustment: calorieAdjustment,
       protein_per_kg: proteinPerKg,
@@ -589,13 +644,51 @@ export function ProfileSettingsModal({
               </label>
             </div>
 
+            <div className="min-w-0 space-y-2.5 border-t border-white/5 pt-3">
+              <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                <Gauge className="h-3.5 w-3.5 shrink-0 text-[#2EE6A6]" />
+                <span>TDEE Calculation Engine</span>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {TDEE_MODE_OPTIONS.map((opt) => {
+                  const active = tdeeMode === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => {
+                        setTdeeMode(opt.value);
+                        setActivityMultiplier(String(opt.defaultMultiplier));
+                      }}
+                      className={`flex min-h-[44px] min-w-0 flex-col items-start rounded-xl border px-3 py-2 text-left transition ${
+                        active
+                          ? 'border-[#2EE6A6]/60 bg-[#2EE6A6]/12 text-[#2EE6A6]'
+                          : 'border-white/10 bg-[#0A0C10]/85 text-slate-300 hover:bg-white/[0.04]'
+                      }`}
+                    >
+                      <span className="text-xs font-semibold leading-snug">{opt.title}</span>
+                      <span className="mt-0.5 text-[10px] leading-snug text-slate-400">
+                        {opt.summary}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             <div className="min-w-0">
               <div className="mb-1.5 flex flex-wrap items-center justify-between gap-1 text-xs font-medium text-slate-300">
-                <span>Baseline Activity Multiplier (NEAT)</span>
-                <span className="tabular-nums text-[11px] text-slate-400">Range 1.10 – 2.20</span>
+                <span>
+                  {tdeeMode === 'FIXED_STATIC'
+                    ? 'Static All-In Activity Multiplier'
+                    : tdeeMode === 'APPLE_HEALTH_DYNAMIC'
+                      ? 'Watch Baseline Multiplier (BMR + TEF)'
+                      : 'Baseline Activity Multiplier (NEAT)'}
+                </span>
+                <span className="tabular-nums text-[11px] text-slate-400">Range 1.00 – 2.20</span>
               </div>
               <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-5">
-                {ACTIVITY_PRESETS.map((preset) => {
+                {ACTIVITY_PRESETS_BY_MODE[tdeeMode].map((preset) => {
                   const active = Math.abs(Number(activityMultiplier) - preset.value) < 0.005;
                   return (
                     <button
@@ -616,7 +709,7 @@ export function ProfileSettingsModal({
                   type="number"
                   inputMode="decimal"
                   step="0.01"
-                  min={1.1}
+                  min={1.0}
                   max={2.2}
                   aria-label="Custom activity multiplier"
                   value={activityMultiplier}
@@ -624,6 +717,11 @@ export function ProfileSettingsModal({
                   className={`tabular-nums ${inputClasses}`}
                 />
               </div>
+              {tdeeMode === 'APPLE_HEALTH_DYNAMIC' && Number(activityMultiplier) > 1.25 && (
+                <p className="mt-2 rounded-xl border border-[#FFB020]/30 bg-[#FFB020]/10 px-3 py-2 text-[11px] leading-snug text-[#FFB020]">
+                  Apple Watch Active Energy already tracks steps &amp; daily movement. Using a multiplier above 1.25× will double-count NEAT — 1.10× (BMR + TEF) is recommended.
+                </p>
+              )}
             </div>
           </div>
 
@@ -1043,7 +1141,10 @@ export function ProfileSettingsModal({
                   </span>
                 </div>
                 <div className="tabular-nums text-xs text-slate-300">
-                  Weight {latestMetric.weightKg.toFixed(1)} kg · +{activeCalories} active kcal
+                  Weight {latestMetric.weightKg.toFixed(1)} kg ·{' '}
+                  {tdeeMode === 'FIXED_STATIC'
+                    ? 'Static TDEE (active tracked only)'
+                    : `+${preview.effectiveActive} active kcal`}
                 </div>
               </div>
 

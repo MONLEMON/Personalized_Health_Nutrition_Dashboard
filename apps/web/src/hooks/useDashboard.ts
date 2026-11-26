@@ -13,6 +13,7 @@ import type {
   NutritionLogDTO,
   SupplementConfig,
   SyncStatusDTO,
+  TdeeMode,
   UpdateProfileSettingsInput,
   WeekdayKey,
   WeeklyBudgetDayDTO,
@@ -165,6 +166,7 @@ function buildFallbackWeeklyBudget(
   calorieAdjustment: number,
   cyclingConfig: CalorieCyclingConfig | null | undefined,
   hasTodayWorkout: boolean,
+  tdeeMode: TdeeMode = 'MANUAL_WORKOUT_DYNAMIC',
 ): WeeklyBudgetSummaryDTO {
   const [y, m, d] = todayDate.split('-').map(Number);
   const utc = new Date(Date.UTC(y, m - 1, d));
@@ -188,7 +190,9 @@ function buildFallbackWeeklyBudget(
       date,
       isToday ? hasTodayWorkout : false,
     );
-    const dayDynamicTdee = baselineTdee + (isToday ? todayActiveCalories : 0);
+    const effectiveTodayActive =
+      isToday && tdeeMode !== 'FIXED_STATIC' ? todayActiveCalories : 0;
+    const dayDynamicTdee = baselineTdee + effectiveTodayActive;
     const targetCalories = Math.max(
       1200,
       Math.round(dayDynamicTdee + calorieAdjustment + resolved.offset),
@@ -237,7 +241,11 @@ function recalculateFallbackDashboard(
   workouts: WorkoutLogDTO[],
 ): DashboardTodayResponse {
   const activeCalories = workouts.reduce((sum, w) => sum + w.activeCalories, 0);
-  const dynamicTdee = Math.round(prev.energy.baselineTdee + activeCalories);
+  const resolvedTdeeMode: TdeeMode =
+    prev.profile.tdeeMode ?? prev.energy.tdeeMode ?? 'MANUAL_WORKOUT_DYNAMIC';
+  const effectiveActiveCalories =
+    resolvedTdeeMode === 'FIXED_STATIC' ? 0 : Math.round(activeCalories);
+  const dynamicTdee = Math.round(prev.energy.baselineTdee + effectiveActiveCalories);
   const cycling = resolveFallbackCycling(prev.goal.calorieCycling, prev.date, workouts.length > 0);
   const baseTargetCalories = Math.max(1200, Math.round(dynamicTdee + prev.goal.calorieAdjustment));
   const targetCalories = Math.max(
@@ -270,6 +278,7 @@ function recalculateFallbackDashboard(
           prev.goal.calorieAdjustment,
           prev.goal.calorieCycling,
           workouts.length > 0,
+          resolvedTdeeMode,
         )
       : undefined;
 
@@ -281,6 +290,8 @@ function recalculateFallbackDashboard(
     energy: {
       ...prev.energy,
       activeCalories,
+      effectiveActiveCalories,
+      tdeeMode: resolvedTdeeMode,
       dynamicTdee,
       cyclingOffset: cycling.offset,
       cyclingDayType: cycling.dayType,
@@ -347,6 +358,7 @@ function recalculateFallbackSettings(
       age,
       heightCm: input.height_cm,
       baselineActivityMultiplier: input.baseline_activity_multiplier,
+      tdeeMode: input.tdee_mode ?? prev.profile.tdeeMode ?? 'MANUAL_WORKOUT_DYNAMIC',
     },
     goal: {
       ...prev.goal,

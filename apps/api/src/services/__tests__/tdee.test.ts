@@ -100,7 +100,7 @@ describe('TDEE, BMR, Macros & Readiness Calculations', () => {
     });
   });
 
-  it('computes Dynamic TDEE as (BMR * baselineActivityMultiplier) + activeCalories', () => {
+  it('computes Dynamic TDEE as (BMR * baselineActivityMultiplier) + activeCalories across modes', () => {
     const restDay = calculateDynamicTdee({
       bmr: 1700,
       baselineActivityMultiplier: 1.35,
@@ -108,6 +108,7 @@ describe('TDEE, BMR, Macros & Readiness Calculations', () => {
     });
     expect(restDay).toEqual({
       baselineTdee: 2295,
+      effectiveActiveCalories: 0,
       dynamicTdee: 2295,
     });
 
@@ -115,10 +116,36 @@ describe('TDEE, BMR, Macros & Readiness Calculations', () => {
       bmr: 1700,
       baselineActivityMultiplier: 1.35,
       activeCalories: 485,
+      tdeeMode: 'MANUAL_WORKOUT_DYNAMIC',
     });
     expect(trainingDay).toEqual({
       baselineTdee: 2295,
+      effectiveActiveCalories: 485,
       dynamicTdee: 2780,
+    });
+
+    const appleWatchDay = calculateDynamicTdee({
+      bmr: 1700,
+      baselineActivityMultiplier: 1.1,
+      activeCalories: 620,
+      tdeeMode: 'APPLE_HEALTH_DYNAMIC',
+    });
+    expect(appleWatchDay).toEqual({
+      baselineTdee: 1870,
+      effectiveActiveCalories: 620,
+      dynamicTdee: 2490,
+    });
+
+    const fixedStaticDay = calculateDynamicTdee({
+      bmr: 1700,
+      baselineActivityMultiplier: 1.55,
+      activeCalories: 620,
+      tdeeMode: 'FIXED_STATIC',
+    });
+    expect(fixedStaticDay).toEqual({
+      baselineTdee: 2635,
+      effectiveActiveCalories: 0,
+      dynamicTdee: 2635,
     });
   });
 
@@ -501,5 +528,93 @@ describe('Hono API Integration Tests (app.request)', () => {
     });
     const end = (await endRes.json()) as DashboardTodayResponse;
     expect(end.supplements.find((s) => s.key === key)?.taken).toBe(false);
+  });
+
+  it('POST /api/onboarding and PATCH /api/settings/profile persist tdee_mode and enforce FIXED_STATIC in dashboard', async () => {
+    const app = createTestApp();
+    const watchHeaders = makeAuthHeaders('11111111-1111-4111-8111-111111111111');
+
+    const onboardRes = await app.request('/api/onboarding', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...watchHeaders },
+      body: JSON.stringify({
+        name: 'Watch Athlete',
+        gender: 'male',
+        birth_date: '1995-04-12',
+        height_cm: 176,
+        weight_kg: 75,
+        baseline_activity_multiplier: 1.0,
+        tdee_mode: 'APPLE_HEALTH_DYNAMIC',
+        goal_type: 'CUT',
+        calorie_adjustment: -350,
+        protein_per_kg: 2.0,
+        fat_ratio: 0.25,
+      }),
+    });
+    expect(onboardRes.status).toBe(201);
+    const onboarded = (await onboardRes.json()) as {
+      onboarded: boolean;
+      profile: { tdeeMode?: string; baselineActivityMultiplier: number } | null;
+    };
+    expect(onboarded.onboarded).toBe(true);
+    expect(onboarded.profile?.tdeeMode).toBe('APPLE_HEALTH_DYNAMIC');
+    expect(onboarded.profile?.baselineActivityMultiplier).toBe(1.0);
+
+    const watchDashRes = await app.request('/api/dashboard/today', {
+      headers: watchHeaders,
+    });
+    expect(watchDashRes.status).toBe(200);
+    const watchDash = (await watchDashRes.json()) as DashboardTodayResponse;
+    expect(watchDash.energy.tdeeMode).toBe('APPLE_HEALTH_DYNAMIC');
+
+    const seedHeaders = makeAuthHeaders();
+    const beforeSeedRes = await app.request('/api/dashboard/today', {
+      headers: seedHeaders,
+    });
+    const beforeSeed = (await beforeSeedRes.json()) as DashboardTodayResponse;
+    expect(beforeSeed.energy.activeCalories).toBeGreaterThan(0);
+    expect(beforeSeed.energy.effectiveActiveCalories).toBe(
+      beforeSeed.energy.activeCalories,
+    );
+
+    const switchRes = await app.request('/api/settings/profile', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...seedHeaders },
+      body: JSON.stringify({
+        name: beforeSeed.profile.name,
+        gender: beforeSeed.profile.sex,
+        birth_date: beforeSeed.profile.birthDate,
+        height_cm: beforeSeed.profile.heightCm,
+        baseline_activity_multiplier: 1.55,
+        tdee_mode: 'FIXED_STATIC',
+        goal_type: beforeSeed.goal.goalType,
+        calorie_adjustment: beforeSeed.goal.calorieAdjustment,
+        protein_per_kg: beforeSeed.goal.proteinPerKg,
+        fat_ratio: beforeSeed.goal.fatRatio,
+      }),
+    });
+    expect(switchRes.status).toBe(200);
+    const switchBody = (await switchRes.json()) as {
+      profile: { tdeeMode?: string; baselineActivityMultiplier: number } | null;
+    };
+    expect(switchBody.profile?.tdeeMode).toBe('FIXED_STATIC');
+    expect(switchBody.profile?.baselineActivityMultiplier).toBe(1.55);
+
+    const afterSeedRes = await app.request('/api/dashboard/today', {
+      headers: seedHeaders,
+    });
+    expect(afterSeedRes.status).toBe(200);
+    const switched = (await afterSeedRes.json()) as DashboardTodayResponse;
+    expect(switched.profile.tdeeMode).toBe('FIXED_STATIC');
+    expect(switched.energy.tdeeMode).toBe('FIXED_STATIC');
+    expect(switched.energy.activeCalories).toBe(beforeSeed.energy.activeCalories);
+    expect(switched.energy.effectiveActiveCalories).toBe(0);
+    expect(switched.energy.dynamicTdee).toBe(switched.energy.baselineTdee);
+    expect(switched.energy.targetCalories).toBe(
+      Math.max(
+        1200,
+        switched.energy.baselineTdee + switched.energy.calorieAdjustment,
+      ),
+    );
   });
 });

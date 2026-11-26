@@ -75,6 +75,7 @@ export function createSeedDataset(todayDate: string = getLocalDateString()): See
     age: calculateAge(birthDate, todayDate),
     heightCm: 176,
     baselineActivityMultiplier: 1.35,
+    tdeeMode: 'MANUAL_WORKOUT_DYNAMIC',
     supplementStack: DEFAULT_SUPPLEMENT_STACK.map((s) => ({ ...s })),
   };
 

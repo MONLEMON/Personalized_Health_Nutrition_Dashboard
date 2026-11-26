@@ -215,6 +215,7 @@ export function computeWeeklyCoachMetrics(
       bmr: bmrResult.bmr,
       baselineActivityMultiplier: profile.baselineActivityMultiplier,
       activeCalories,
+      tdeeMode: profile.tdeeMode,
     });
     sumDynamicTdee += dynamicTdee;
 

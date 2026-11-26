@@ -37,6 +37,7 @@ export const mockDashboardToday: DashboardTodayResponse = {
     age: 31,
     heightCm: 176,
     baselineActivityMultiplier: 1.35,
+    tdeeMode: 'MANUAL_WORKOUT_DYNAMIC',
     supplementStack: [
       {
         key: 'creatine',
@@ -86,7 +87,9 @@ export const mockDashboardToday: DashboardTodayResponse = {
     leanBodyMassKg: 62.5,
     baselineTdee: 2323,
     activeCalories: 510,
+    effectiveActiveCalories: 510,
     dynamicTdee: 2833,
+    tdeeMode: 'MANUAL_WORKOUT_DYNAMIC',
     calorieAdjustment: -350,
     targetCalories: 2483,
     consumedCalories: 1740,

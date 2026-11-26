@@ -17,6 +17,7 @@ import type {
   NutritionLogSource,
   Sex,
   SupplementConfig,
+  TdeeMode,
   WeeklyCoachAiNarrativeDTO,
   WeeklyCoachMetricsDTO,
   WeeklyCoachRecommendationDTO,
@@ -31,6 +32,10 @@ export const userProfiles = pgTable('user_profiles', {
   birthDate: text('birth_date').notNull(),
   heightCm: doublePrecision('height_cm').notNull(),
   baselineActivityMultiplier: doublePrecision('baseline_activity_multiplier').notNull(),
+  tdeeMode: text('tdee_mode')
+    .$type<TdeeMode>()
+    .notNull()
+    .default('MANUAL_WORKOUT_DYNAMIC'),
   supplementStack: jsonb('supplement_stack').$type<SupplementConfig[]>().notNull(),
   webhookKeyHash: text('webhook_key_hash').unique(),
   webhookKeyPrefix: varchar('webhook_key_prefix', { length: 32 }),

@@ -336,7 +336,13 @@ export function HeroStatusCard({
           <div className="min-w-0 rounded-2xl border border-white/5 bg-[#0F131C]/90 p-2.5 sm:p-3.5">
             <div className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-slate-400 sm:gap-1.5 sm:text-[11px] sm:tracking-wider">
               <Gauge className="h-3.5 w-3.5 shrink-0 text-[#38BDF8]" />
-              <span className="truncate">Dynamic TDEE</span>
+              <span className="truncate">
+                {energy.tdeeMode === 'FIXED_STATIC'
+                  ? 'Static TDEE'
+                  : energy.tdeeMode === 'APPLE_HEALTH_DYNAMIC'
+                    ? 'Watch TDEE'
+                    : 'Dynamic TDEE'}
+              </span>
             </div>
             <div className="tabular-nums mt-1.5 text-base font-bold text-white sm:mt-2 sm:text-2xl">
               {energy.dynamicTdee.toLocaleString()}
@@ -354,7 +360,9 @@ export function HeroStatusCard({
             <div className="tabular-nums mt-1.5 text-base font-bold text-[#FFB020] sm:mt-2 sm:text-2xl">
               +{energy.activeCalories.toLocaleString()}
             </div>
-            <div className="mt-0.5 truncate text-[10px] text-slate-500 sm:text-[11px]">kcal today</div>
+            <div className="mt-0.5 truncate text-[10px] text-slate-500 sm:text-[11px]">
+              {energy.tdeeMode === 'FIXED_STATIC' ? 'tracked only' : 'kcal today'}
+            </div>
           </div>
 
           <div className="min-w-0 rounded-2xl border border-white/5 bg-[#0F131C]/90 p-2.5 sm:p-3.5">

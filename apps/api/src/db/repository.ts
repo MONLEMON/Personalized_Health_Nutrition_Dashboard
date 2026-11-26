@@ -399,6 +399,7 @@ function buildWeeklyBudgetSummary(params: {
       bmr: bmrResult.bmr,
       baselineActivityMultiplier: profile.baselineActivityMultiplier,
       activeCalories,
+      tdeeMode: profile.tdeeMode,
     });
 
     const cycling = resolveCalorieCyclingForDate(
@@ -497,10 +498,11 @@ function buildDashboardTodayResponse(params: {
     workouts.reduce((sum, w) => sum + w.activeCalories, 0),
   );
 
-  const { baselineTdee, dynamicTdee } = calculateDynamicTdee({
+  const { baselineTdee, effectiveActiveCalories, dynamicTdee } = calculateDynamicTdee({
     bmr: bmrResult.bmr,
     baselineActivityMultiplier: profile.baselineActivityMultiplier,
     activeCalories,
+    tdeeMode: profile.tdeeMode,
   });
 
   const cycling = resolveCalorieCyclingForDate(
@@ -566,6 +568,8 @@ function buildDashboardTodayResponse(params: {
       leanBodyMassKg: bmrResult.leanBodyMassKg,
       baselineTdee,
       activeCalories,
+      effectiveActiveCalories,
+      tdeeMode: profile.tdeeMode ?? 'MANUAL_WORKOUT_DYNAMIC',
       dynamicTdee,
       calorieAdjustment: goal.calorieAdjustment,
       cyclingOffset: cycling.offset,
@@ -750,6 +754,7 @@ function buildMonthlyCalendarResponse(params: {
       bmr: bmrResult.bmr,
       baselineActivityMultiplier: profile.baselineActivityMultiplier,
       activeCalories,
+      tdeeMode: profile.tdeeMode,
     });
     const cycling = resolveCalorieCyclingForDate(
       goal.calorieCycling,
@@ -1022,6 +1027,7 @@ export class InMemoryHealthRepository implements HealthRepository {
       age: calculateAge(input.birth_date),
       heightCm: input.height_cm,
       baselineActivityMultiplier: input.baseline_activity_multiplier,
+      tdeeMode: input.tdee_mode ?? 'MANUAL_WORKOUT_DYNAMIC',
       supplementStack: DEFAULT_SUPPLEMENT_STACK.map((s) => ({ ...s })),
       webhookKeyPrefix: existing?.webhookKeyPrefix ?? null,
     };
@@ -1528,6 +1534,9 @@ export class InMemoryHealthRepository implements HealthRepository {
     user.profile.age = calculateAge(input.birth_date);
     user.profile.heightCm = input.height_cm;
     user.profile.baselineActivityMultiplier = input.baseline_activity_multiplier;
+    if (input.tdee_mode !== undefined) {
+      user.profile.tdeeMode = input.tdee_mode;
+    }
 
     activeGoal.goalType = input.goal_type;
     activeGoal.calorieAdjustment = input.calorie_adjustment;
@@ -1928,6 +1937,7 @@ function toProfileDTO(row: typeof userProfiles.$inferSelect): UserProfileDTO {
     age: calculateAge(row.birthDate),
     heightCm: row.heightCm,
     baselineActivityMultiplier: row.baselineActivityMultiplier,
+    tdeeMode: row.tdeeMode ?? 'MANUAL_WORKOUT_DYNAMIC',
     supplementStack: row.supplementStack,
     webhookKeyPrefix: row.webhookKeyPrefix ?? null,
   };
@@ -1974,6 +1984,10 @@ export class PostgresHealthRepository implements HealthRepository {
   private ensurePhase6Schema(): Promise<void> {
     if (!this.phase6SchemaPromise) {
       this.phase6SchemaPromise = (async () => {
+        await this.db.execute(sql`
+          ALTER TABLE public.user_profiles
+            ADD COLUMN IF NOT EXISTS tdee_mode text NOT NULL DEFAULT 'MANUAL_WORKOUT_DYNAMIC'
+        `);
         await this.db.execute(sql`
           ALTER TABLE public.user_goals
             ADD COLUMN IF NOT EXISTS calorie_cycling_config jsonb
@@ -2157,6 +2171,7 @@ export class PostgresHealthRepository implements HealthRepository {
           birthDate: input.birth_date,
           heightCm: input.height_cm,
           baselineActivityMultiplier: input.baseline_activity_multiplier,
+          tdeeMode: input.tdee_mode ?? 'MANUAL_WORKOUT_DYNAMIC',
           supplementStack,
         })
         .onConflictDoUpdate({
@@ -2167,6 +2182,7 @@ export class PostgresHealthRepository implements HealthRepository {
             birthDate: input.birth_date,
             heightCm: input.height_cm,
             baselineActivityMultiplier: input.baseline_activity_multiplier,
+            tdeeMode: input.tdee_mode ?? 'MANUAL_WORKOUT_DYNAMIC',
             supplementStack,
           },
         });
@@ -2737,6 +2753,7 @@ export class PostgresHealthRepository implements HealthRepository {
           birthDate: input.birth_date,
           heightCm: input.height_cm,
           baselineActivityMultiplier: input.baseline_activity_multiplier,
+          ...(input.tdee_mode !== undefined ? { tdeeMode: input.tdee_mode } : {}),
         })
         .where(eq(userProfiles.id, userId))
         .returning({ id: userProfiles.id });

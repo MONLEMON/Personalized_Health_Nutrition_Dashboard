@@ -134,6 +134,12 @@ export const SyncStatusSchema = z.object({
   status: z.enum(['SUCCESS', 'NEVER']),
 });
 
+export const TdeeModeSchema = z.enum([
+  'APPLE_HEALTH_DYNAMIC',
+  'MANUAL_WORKOUT_DYNAMIC',
+  'FIXED_STATIC',
+]);
+
 export const OnboardingProfileSchema = z.object({
   name: z.string().trim().min(1).max(100).optional(),
   gender: z.enum(['male', 'female', 'other']),
@@ -148,7 +154,8 @@ export const OnboardingProfileSchema = z.object({
     emptyToUndefined,
     z.coerce.number().min(5).max(150).nullable().optional(),
   ),
-  baseline_activity_multiplier: z.coerce.number().min(1.1).max(2.2).default(1.35),
+  baseline_activity_multiplier: z.coerce.number().min(1.0).max(2.2).default(1.35),
+  tdee_mode: TdeeModeSchema.default('MANUAL_WORKOUT_DYNAMIC'),
   goal_type: z.enum(['CUT', 'MAINTAIN', 'BULK']),
   calorie_adjustment: z.coerce.number().int().min(-1500).max(1500),
   protein_per_kg: z.coerce.number().min(0.8).max(3.5).default(2.0),
@@ -212,7 +219,8 @@ export const UpdateProfileSettingsSchema = z.object({
   gender: z.enum(['male', 'female', 'other']),
   birth_date: z.string().regex(isoDateRegex, 'Expected YYYY-MM-DD'),
   height_cm: z.coerce.number().min(80).max(260),
-  baseline_activity_multiplier: z.coerce.number().min(1.1).max(2.2),
+  baseline_activity_multiplier: z.coerce.number().min(1.0).max(2.2),
+  tdee_mode: TdeeModeSchema.optional(),
   goal_type: z.enum(['CUT', 'MAINTAIN', 'BULK']),
   calorie_adjustment: z.coerce.number().int().min(-1500).max(1500),
   protein_per_kg: z.coerce.number().min(0.8).max(3.5),

@@ -6,6 +6,7 @@ import type {
   ReadinessStatus,
   ReadinessSummary,
   Sex,
+  TdeeMode,
   WeekdayKey,
 } from '@health-dash/shared';
 
@@ -27,10 +28,12 @@ export interface CalculateDynamicTdeeInput {
   bmr: number;
   baselineActivityMultiplier: number;
   activeCalories: number;
+  tdeeMode?: TdeeMode;
 }
 
 export interface CalculateDynamicTdeeResult {
   baselineTdee: number;
+  effectiveActiveCalories: number;
   dynamicTdee: number;
 }
 
@@ -128,16 +131,23 @@ export function calculateBmr({
 }
 
 /**
- * Computes baseline sedentary/NEAT TDEE and dynamic TDEE including logged workout active calories.
+ * Computes baseline TDEE and Dynamic TDEE according to the selected TDEE engine mode:
+ * - APPLE_HEALTH_DYNAMIC / MANUAL_WORKOUT_DYNAMIC: adds daily activeCalories to baseline TDEE
+ * - FIXED_STATIC: ignores daily activeCalories (effectiveActiveCalories = 0) so targets stay steady
  */
 export function calculateDynamicTdee({
   bmr,
   baselineActivityMultiplier,
   activeCalories,
+  tdeeMode = 'MANUAL_WORKOUT_DYNAMIC',
 }: CalculateDynamicTdeeInput): CalculateDynamicTdeeResult {
   const baselineTdee = Math.round(bmr * baselineActivityMultiplier);
-  const dynamicTdee = Math.round(bmr * baselineActivityMultiplier + activeCalories);
-  return { baselineTdee, dynamicTdee };
+  const effectiveActiveCalories =
+    tdeeMode === 'FIXED_STATIC' ? 0 : Math.round(activeCalories);
+  const dynamicTdee = Math.round(
+    bmr * baselineActivityMultiplier + effectiveActiveCalories,
+  );
+  return { baselineTdee, effectiveActiveCalories, dynamicTdee };
 }
 
 const WEEKDAY_KEYS_UTC: readonly WeekdayKey[] = [

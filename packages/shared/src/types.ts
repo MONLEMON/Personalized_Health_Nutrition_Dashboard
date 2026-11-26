@@ -2,6 +2,7 @@ import type { SyncStatusDTO } from './schemas';
 
 export type Sex = 'male' | 'female' | 'other';
 export type GoalType = 'CUT' | 'MAINTAIN' | 'BULK';
+export type TdeeMode = 'APPLE_HEALTH_DYNAMIC' | 'MANUAL_WORKOUT_DYNAMIC' | 'FIXED_STATIC';
 export type BmrFormula = 'katch_mcardle' | 'mifflin_st_jeor';
 export type ReadinessStatus = 'optimal' | 'moderate' | 'overload';
 export type WorkoutCategory = 'strength' | 'cardio' | 'hiit' | 'mobility' | 'sport';
@@ -29,6 +30,7 @@ export interface UserProfileDTO {
   age: number;
   heightCm: number;
   baselineActivityMultiplier: number;
+  tdeeMode?: TdeeMode;
   supplementStack: SupplementConfig[];
   webhookKeyPrefix?: string | null;
 }
@@ -116,6 +118,8 @@ export interface EnergySummary {
   leanBodyMassKg: number | null;
   baselineTdee: number;
   activeCalories: number;
+  effectiveActiveCalories?: number;
+  tdeeMode?: TdeeMode;
   dynamicTdee: number;
   calorieAdjustment: number;
   cyclingOffset?: number;

@@ -135,10 +135,20 @@ export function MacroRingsCard({ energy, macros }: MacroRingsCardProps) {
               </span>
             </div>
             <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 text-[11px] text-slate-400">
-              <span>Dynamic TDEE</span>
+              <span>{energy.tdeeMode === 'FIXED_STATIC' ? 'Static TDEE' : 'Dynamic TDEE'}</span>
               <span className="tabular-nums text-slate-300">
-                {energy.bmr} × {multiplierApprox} + {energy.activeCalories} ={' '}
-                <strong className="text-white">{energy.dynamicTdee}</strong>
+                {energy.tdeeMode === 'FIXED_STATIC' ? (
+                  <>
+                    {energy.bmr} × {multiplierApprox} (Fixed) ={' '}
+                    <strong className="text-white">{energy.dynamicTdee}</strong>
+                  </>
+                ) : (
+                  <>
+                    {energy.bmr} × {multiplierApprox} +{' '}
+                    {energy.effectiveActiveCalories ?? energy.activeCalories} ={' '}
+                    <strong className="text-white">{energy.dynamicTdee}</strong>
+                  </>
+                )}
               </span>
             </div>
           </div>
