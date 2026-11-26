@@ -171,7 +171,7 @@ export function AuthPage() {
   const visibleError = localError ?? authError;
 
   return (
-    <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-[#0A0C10] px-4 py-8 pt-[calc(2rem+env(safe-area-inset-top))] pb-[calc(2rem+env(safe-area-inset-bottom))] text-white">
+    <div className="relative flex min-h-screen flex-col items-center justify-center overflow-x-clip bg-[#0A0C10] px-4 py-8 pt-[calc(2rem+env(safe-area-inset-top))] pb-[calc(2rem+env(safe-area-inset-bottom))] text-white">
       {/* Ambient Mint & Sky glows */}
       <div
         aria-hidden="true"
@@ -182,11 +182,11 @@ export function AuthPage() {
         className="pointer-events-none fixed bottom-0 left-1/2 h-80 w-[34rem] -translate-x-1/2 rounded-full bg-[#38BDF8]/8 blur-3xl"
       />
 
-      <div className="relative z-10 w-full max-w-md">
+      <div className="relative z-10 w-full min-w-0 max-w-md">
         {/* Brand Header */}
         <div className="mb-6 flex flex-col items-center text-center">
           <VitalPulseOrbLogo />
-          <div className="mt-3 flex items-center gap-2">
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
             <h1 className="text-2xl font-bold tracking-tight text-white">VitalPulse</h1>
             <span className="rounded-full border border-[#2EE6A6]/30 bg-[#2EE6A6]/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[#2EE6A6]">
               Biometric OS
@@ -198,7 +198,7 @@ export function AuthPage() {
         </div>
 
         {/* Main Card */}
-        <section className="relative overflow-hidden rounded-3xl border border-white/5 bg-[#141720] p-6 shadow-[0_24px_64px_-16px_rgba(0,0,0,0.95)] sm:p-7">
+        <section className="relative min-w-0 overflow-hidden rounded-3xl border border-white/5 bg-[#141720] p-5 shadow-[0_24px_64px_-16px_rgba(0,0,0,0.95)] sm:p-7">
           <div
             aria-hidden="true"
             className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/15 to-transparent"
@@ -208,7 +208,7 @@ export function AuthPage() {
             className="pointer-events-none absolute inset-0 bg-gradient-to-br from-[#2EE6A6]/8 via-transparent to-transparent"
           />
 
-          <div className="relative z-10 space-y-5">
+          <div className="relative z-10 min-w-0 space-y-5">
             {/* Mode Segmented Toggle */}
             <div
               className="grid grid-cols-2 gap-1.5 rounded-2xl border border-white/5 bg-[#0A0C10] p-1"
@@ -220,7 +220,7 @@ export function AuthPage() {
                 role="tab"
                 aria-selected={mode === 'signin'}
                 onClick={() => switchMode('signin')}
-                className={`min-h-[44px] cursor-pointer rounded-xl text-sm font-semibold transition ${
+                className={`min-h-[44px] min-w-0 cursor-pointer rounded-xl px-2 text-sm font-semibold transition ${
                   mode === 'signin'
                     ? 'bg-[#1A1E2A] text-white shadow-sm'
                     : 'text-slate-400 hover:text-slate-200'
@@ -233,7 +233,7 @@ export function AuthPage() {
                 role="tab"
                 aria-selected={mode === 'signup'}
                 onClick={() => switchMode('signup')}
-                className={`min-h-[44px] cursor-pointer rounded-xl text-sm font-semibold transition ${
+                className={`min-h-[44px] min-w-0 cursor-pointer rounded-xl px-2 text-sm font-semibold transition ${
                   mode === 'signup'
                     ? 'bg-[#1A1E2A] text-white shadow-sm'
                     : 'text-slate-400 hover:text-slate-200'
@@ -245,10 +245,10 @@ export function AuthPage() {
 
             {/* Unconfigured .env Setup Guide */}
             {!isConfigured ? (
-              <div className="rounded-2xl border border-[#FFB020]/30 bg-[#FFB020]/10 p-4 text-xs text-amber-100">
-                <div className="flex items-start gap-2.5">
+              <div className="min-w-0 rounded-2xl border border-[#FFB020]/30 bg-[#FFB020]/10 p-4 text-xs text-amber-100">
+                <div className="flex min-w-0 items-start gap-2.5">
                   <Terminal className="mt-0.5 h-4 w-4 shrink-0 text-[#FFB020]" />
-                  <div className="space-y-2">
+                  <div className="min-w-0 flex-1 space-y-2">
                     <p className="font-semibold text-[#FFB020]">
                       Supabase Auth Not Configured Yet
                     </p>
@@ -259,7 +259,7 @@ export function AuthPage() {
                       </code>{' '}
                       file and restart Vite:
                     </p>
-                    <pre className="overflow-x-auto rounded-xl border border-white/10 bg-[#0A0C10] p-2.5 font-mono text-[11px] leading-relaxed text-slate-200">
+                    <pre className="max-w-full overflow-x-auto rounded-xl border border-white/10 bg-[#0A0C10] p-2.5 font-mono text-[11px] leading-relaxed text-slate-200">
                       {`VITE_SUPABASE_URL=https://your-project.supabase.co\nVITE_SUPABASE_ANON_KEY=your-supabase-anon-key`}
                     </pre>
                   </div>
@@ -274,7 +274,9 @@ export function AuthPage() {
                 className="flex items-start gap-2.5 rounded-2xl border border-[#2EE6A6]/30 bg-[#2EE6A6]/12 px-3.5 py-3 text-xs text-[#2EE6A6]"
               >
                 <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#2EE6A6]" />
-                <span className="leading-relaxed font-medium">{infoNotice}</span>
+                <span className="min-w-0 flex-1 break-words leading-relaxed font-medium">
+                  {infoNotice}
+                </span>
               </div>
             ) : null}
 
@@ -285,7 +287,9 @@ export function AuthPage() {
                 className="flex items-start gap-2.5 rounded-2xl border border-[#FF5C6C]/30 bg-[#FF5C6C]/12 px-3.5 py-3 text-xs text-[#FF8A95]"
               >
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-[#FF5C6C]" />
-                <span className="leading-relaxed font-medium">{visibleError}</span>
+                <span className="min-w-0 flex-1 break-words leading-relaxed font-medium">
+                  {visibleError}
+                </span>
               </div>
             ) : null}
 
@@ -313,8 +317,8 @@ export function AuthPage() {
             </div>
 
             {/* Email / Password Form */}
-            <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
-              <label className="block">
+            <form onSubmit={(e) => void handleSubmit(e)} className="min-w-0 space-y-4">
+              <label className="block min-w-0">
                 <span className="text-xs font-medium text-slate-300">Email</span>
                 <div className="relative mt-1.5">
                   <Mail className="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-slate-500" />
@@ -326,12 +330,12 @@ export function AuthPage() {
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="you@example.com"
                     disabled={!isConfigured || submitting}
-                    className="min-h-[44px] w-full rounded-xl border border-white/10 bg-[#0A0C10] py-2 pr-3 pl-10 text-base text-white outline-none transition placeholder:text-slate-600 focus:border-[#2EE6A6] disabled:opacity-50 sm:text-sm"
+                    className="min-h-[44px] w-full min-w-0 max-w-full rounded-xl border border-white/10 bg-[#0A0C10] py-2 pr-3 pl-10 text-base text-white outline-none transition placeholder:text-slate-600 focus:border-[#2EE6A6] disabled:opacity-50 sm:text-sm"
                   />
                 </div>
               </label>
 
-              <label className="block">
+              <label className="block min-w-0">
                 <span className="text-xs font-medium text-slate-300">Password</span>
                 <div className="relative mt-1.5">
                   <Lock className="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-slate-500" />
@@ -344,7 +348,7 @@ export function AuthPage() {
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder={mode === 'signup' ? 'At least 6 characters' : '••••••••'}
                     disabled={!isConfigured || submitting}
-                    className="min-h-[44px] w-full rounded-xl border border-white/10 bg-[#0A0C10] py-2 pr-11 pl-10 text-base text-white outline-none transition placeholder:text-slate-600 focus:border-[#2EE6A6] disabled:opacity-50 sm:text-sm"
+                    className="min-h-[44px] w-full min-w-0 max-w-full rounded-xl border border-white/10 bg-[#0A0C10] py-2 pr-11 pl-10 text-base text-white outline-none transition placeholder:text-slate-600 focus:border-[#2EE6A6] disabled:opacity-50 sm:text-sm"
                   />
                   <button
                     type="button"
@@ -373,8 +377,8 @@ export function AuthPage() {
               </button>
             </form>
 
-            <div className="flex items-center justify-center gap-1.5 pt-1 text-[11px] text-slate-500">
-              <ShieldCheck className="h-3.5 w-3.5 text-[#2EE6A6]" />
+            <div className="flex flex-wrap items-center justify-center gap-1.5 pt-1 text-center text-[11px] text-slate-500">
+              <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-[#2EE6A6]" />
               <span>Private multi-user biometric vault · JWT protected</span>
             </div>
           </div>

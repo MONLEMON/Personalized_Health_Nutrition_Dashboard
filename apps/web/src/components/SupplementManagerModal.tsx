@@ -232,7 +232,7 @@ export function SupplementManagerModal({
   };
 
   const inputClasses =
-    'min-h-[44px] w-full rounded-xl border border-white/10 bg-[#0A0C10]/85 px-3 py-2 text-base sm:text-sm text-white placeholder:text-slate-500 focus:border-[#2EE6A6]/60 focus:outline-none focus:ring-1 focus:ring-[#2EE6A6]/40';
+    'min-h-[44px] w-full min-w-0 max-w-full rounded-xl border border-white/10 bg-[#0A0C10]/85 px-3 py-2 text-base sm:text-sm text-white placeholder:text-slate-500 focus:border-[#2EE6A6]/60 focus:outline-none focus:ring-1 focus:ring-[#2EE6A6]/40';
 
   return (
     <div
@@ -246,7 +246,7 @@ export function SupplementManagerModal({
         }
       }}
     >
-      <div className="animate-sheet-up relative max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl rounded-b-none border-t border-x border-white/10 bg-[#141720]/98 px-5 pt-3 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-[0_-24px_64px_-12px_rgba(0,0,0,0.95)] backdrop-blur-2xl sm:max-w-2xl sm:rounded-3xl sm:border sm:p-6 sm:shadow-[0_32px_80px_-16px_rgba(0,0,0,0.95)]">
+      <div className="animate-sheet-up relative max-h-[92dvh] w-full overflow-x-hidden overflow-y-auto rounded-t-3xl rounded-b-none border-t border-x border-white/10 bg-[#141720]/98 px-4 pt-3 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-[0_-24px_64px_-12px_rgba(0,0,0,0.95)] backdrop-blur-2xl sm:max-w-2xl sm:rounded-3xl sm:border sm:p-6 sm:shadow-[0_32px_80px_-16px_rgba(0,0,0,0.95)]">
         <div
           aria-hidden="true"
           className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/25 to-transparent"
@@ -258,11 +258,11 @@ export function SupplementManagerModal({
 
         {/* Header */}
         <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
+          <div className="flex min-w-0 flex-1 items-center gap-2.5">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-[#2EE6A6]/15 text-[#2EE6A6]">
               <Pill className="h-4 w-4" />
             </div>
-            <div>
+            <div className="min-w-0">
               <h2 id="supplement-manager-title" className="text-base font-semibold text-white">
                 Manage Supplement Stack
               </h2>
@@ -277,17 +277,17 @@ export function SupplementManagerModal({
             onClick={onClose}
             disabled={busy}
             aria-label="Close supplement manager"
-            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-slate-400 transition hover:bg-white/10 hover:text-white disabled:opacity-50"
+            className="flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-slate-400 transition hover:bg-white/10 hover:text-white disabled:opacity-50"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+        <form onSubmit={handleSubmit} className="mt-4 min-w-0 space-y-4">
           {/* Quick-Add Vitamin Chips */}
-          <div>
+          <div className="min-w-0">
             <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-              <Sparkles className="h-3 w-3 text-[#2EE6A6]" />
+              <Sparkles className="h-3 w-3 shrink-0 text-[#2EE6A6]" />
               <span>Quick-Add Vitamins &amp; Essentials</span>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -303,18 +303,18 @@ export function SupplementManagerModal({
                     type="button"
                     disabled={isAdded || busy}
                     onClick={() => handleQuickAdd(preset)}
-                    className={`inline-flex min-h-[38px] items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                    className={`inline-flex min-h-[38px] max-w-full items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition ${
                       isAdded
                         ? 'border-[#2EE6A6]/35 bg-[#2EE6A6]/12 text-[#2EE6A6] opacity-80'
                         : 'border-white/10 bg-white/[0.04] text-slate-200 hover:border-[#2EE6A6]/40 hover:bg-[#2EE6A6]/10 hover:text-[#2EE6A6]'
                     }`}
                   >
                     {isAdded ? (
-                      <Check className="h-3 w-3 text-[#2EE6A6]" />
+                      <Check className="h-3 w-3 shrink-0 text-[#2EE6A6]" />
                     ) : (
-                      <Plus className="h-3 w-3 text-[#2EE6A6]" />
+                      <Plus className="h-3 w-3 shrink-0 text-[#2EE6A6]" />
                     )}
-                    <span>{preset.chipLabel}</span>
+                    <span className="truncate">{preset.chipLabel}</span>
                   </button>
                 );
               })}
@@ -322,8 +322,8 @@ export function SupplementManagerModal({
           </div>
 
           {/* Current Stack Inline Editor */}
-          <div className="space-y-2.5">
-            <div className="flex items-center justify-between text-xs">
+          <div className="min-w-0 space-y-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-1 text-xs">
               <span className="font-semibold uppercase tracking-wider text-slate-400">
                 Your Stack ({drafts.length}/30)
               </span>
@@ -342,10 +342,10 @@ export function SupplementManagerModal({
                 {drafts.map((item) => (
                   <div
                     key={item.key}
-                    className="rounded-2xl border border-white/10 bg-[#0F131C]/85 p-3"
+                    className="min-w-0 rounded-2xl border border-white/10 bg-[#0F131C]/85 p-3"
                   >
                     <div className="mb-2 flex items-center justify-between gap-2">
-                      <span className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 font-mono text-[10px] text-slate-400">
+                      <span className="min-w-0 truncate rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 font-mono text-[10px] text-slate-400">
                         key: {item.key}
                       </span>
                       <button
@@ -353,13 +353,13 @@ export function SupplementManagerModal({
                         disabled={busy}
                         onClick={() => handleRemoveItem(item.key)}
                         aria-label={`Remove ${item.name || item.key}`}
-                        className="inline-flex min-h-[36px] min-w-[36px] items-center justify-center rounded-xl text-slate-400 transition hover:bg-[#FF5C6C]/15 hover:text-[#FF5C6C]"
+                        className="inline-flex min-h-[36px] min-w-[36px] shrink-0 items-center justify-center rounded-xl text-slate-400 transition hover:bg-[#FF5C6C]/15 hover:text-[#FF5C6C]"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-12">
-                      <div className="sm:col-span-5">
+                      <div className="min-w-0 sm:col-span-5">
                         <label className="mb-1 block text-[11px] text-slate-400">Name</label>
                         <input
                           type="text"
@@ -371,7 +371,7 @@ export function SupplementManagerModal({
                           className={inputClasses}
                         />
                       </div>
-                      <div className="sm:col-span-3">
+                      <div className="min-w-0 sm:col-span-3">
                         <label className="mb-1 block text-[11px] text-slate-400">Dosage</label>
                         <input
                           type="text"
@@ -383,7 +383,7 @@ export function SupplementManagerModal({
                           className={inputClasses}
                         />
                       </div>
-                      <div className="sm:col-span-4">
+                      <div className="min-w-0 sm:col-span-4">
                         <label className="mb-1 block text-[11px] text-slate-400">Timing</label>
                         <input
                           type="text"
@@ -403,12 +403,12 @@ export function SupplementManagerModal({
           </div>
 
           {/* Add Custom Supplement */}
-          <div className="rounded-2xl border border-white/10 bg-[#0A0C10]/70 p-3.5">
+          <div className="min-w-0 rounded-2xl border border-white/10 bg-[#0A0C10]/70 p-3.5">
             <div className="mb-2.5 text-xs font-semibold text-slate-300">
               Add Custom Supplement
             </div>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-12">
-              <div className="sm:col-span-5">
+              <div className="min-w-0 sm:col-span-5">
                 <input
                   type="text"
                   maxLength={80}
@@ -418,7 +418,7 @@ export function SupplementManagerModal({
                   className={inputClasses}
                 />
               </div>
-              <div className="sm:col-span-3">
+              <div className="min-w-0 sm:col-span-3">
                 <input
                   type="text"
                   maxLength={60}
@@ -428,15 +428,15 @@ export function SupplementManagerModal({
                   className={inputClasses}
                 />
               </div>
-              <div className="sm:col-span-4">
-                <div className="flex gap-2">
+              <div className="min-w-0 sm:col-span-4">
+                <div className="flex min-w-0 items-center gap-2">
                   <input
                     type="text"
                     maxLength={60}
                     value={newTiming}
                     onChange={(e) => setNewTiming(e.target.value)}
                     placeholder="Before sleep"
-                    className={inputClasses}
+                    className={`min-w-0 flex-1 ${inputClasses}`}
                   />
                   <button
                     type="button"
@@ -458,7 +458,7 @@ export function SupplementManagerModal({
               className="flex items-start gap-2 rounded-2xl border border-[#FF5C6C]/35 bg-[#FF5C6C]/12 px-3.5 py-2.5 text-xs font-medium text-[#FF8A95]"
             >
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-[#FF5C6C]" />
-              <span>{error}</span>
+              <span className="min-w-0 flex-1 break-words">{error}</span>
             </div>
           ) : null}
 

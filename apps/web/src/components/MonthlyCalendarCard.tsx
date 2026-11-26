@@ -383,17 +383,17 @@ export function MonthlyCalendarCard({
       icon={<CalendarIcon className="h-4 w-4 text-[#38BDF8]" />}
       accentGlow="sky"
       headerRight={
-        <div className="flex items-center gap-1.5">
+        <div className="flex w-full items-center justify-between gap-1.5 sm:w-auto sm:justify-end">
           <button
             type="button"
             onClick={() => setMonth((prev) => shiftMonth(prev, -1))}
             aria-label="Previous month"
-            className="flex min-h-[38px] min-w-[38px] items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-slate-300 transition hover:bg-white/10 hover:text-white"
+            className="flex min-h-[38px] min-w-[38px] shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-slate-300 transition hover:bg-white/10 hover:text-white"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
 
-          <span className="min-w-[122px] text-center text-xs font-semibold text-white sm:text-sm">
+          <span className="min-w-0 flex-1 truncate text-center text-xs font-semibold text-white sm:min-w-[122px] sm:flex-none sm:text-sm">
             {formatMonthHeading(month)}
           </span>
 
@@ -401,7 +401,7 @@ export function MonthlyCalendarCard({
             type="button"
             onClick={() => setMonth((prev) => shiftMonth(prev, 1))}
             aria-label="Next month"
-            className="flex min-h-[38px] min-w-[38px] items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-slate-300 transition hover:bg-white/10 hover:text-white"
+            className="flex min-h-[38px] min-w-[38px] shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-slate-300 transition hover:bg-white/10 hover:text-white"
           >
             <ChevronRight className="h-4 w-4" />
           </button>
@@ -410,58 +410,58 @@ export function MonthlyCalendarCard({
             type="button"
             onClick={handleJumpToday}
             disabled={isViewingTodayMonth && selectedDate === todayDate}
-            className="ml-1 min-h-[38px] rounded-xl border border-[#38BDF8]/30 bg-[#38BDF8]/12 px-3 text-xs font-semibold text-[#38BDF8] transition hover:bg-[#38BDF8]/20 disabled:cursor-default disabled:opacity-45"
+            className="ml-1 min-h-[38px] shrink-0 rounded-xl border border-[#38BDF8]/30 bg-[#38BDF8]/12 px-3 text-xs font-semibold text-[#38BDF8] transition hover:bg-[#38BDF8]/20 disabled:cursor-default disabled:opacity-45"
           >
             Today
           </button>
         </div>
       }
     >
-      <div className="space-y-4">
+      <div className="min-w-0 space-y-4">
         {/* Monthly KPI Roll-up Strip */}
         {summary ? (
-          <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
-            <div className="rounded-2xl border border-white/5 bg-[#0F131C]/80 px-3.5 py-2.5">
-              <div className="text-[11px] text-slate-400">Logged Days</div>
-              <div className="tabular-nums mt-0.5 text-base font-bold text-white">
+          <div className="grid grid-cols-2 gap-2 sm:gap-2.5 lg:grid-cols-4">
+            <div className="min-w-0 rounded-2xl border border-white/5 bg-[#0F131C]/80 p-3 sm:px-3.5 sm:py-2.5">
+              <div className="truncate text-[11px] text-slate-400">Logged Days</div>
+              <div className="tabular-nums mt-0.5 text-sm font-bold text-white sm:text-base">
                 {summary.loggedDays}
                 <span className="ml-1 text-xs font-normal text-slate-400">
                   / {calendarData?.daysInMonth ?? 30}
                 </span>
               </div>
-              <div className="tabular-nums mt-0.5 text-[11px] text-slate-400">
+              <div className="tabular-nums mt-0.5 truncate text-[11px] text-slate-400">
                 Supp Adherence {summary.supplementAdherencePct}%
               </div>
             </div>
 
-            <div className="rounded-2xl border border-white/5 bg-[#0F131C]/80 px-3.5 py-2.5">
-              <div className="text-[11px] text-slate-400">Optimal Days</div>
-              <div className="tabular-nums mt-0.5 text-base font-bold text-[#2EE6A6]">
+            <div className="min-w-0 rounded-2xl border border-white/5 bg-[#0F131C]/80 p-3 sm:px-3.5 sm:py-2.5">
+              <div className="truncate text-[11px] text-slate-400">Optimal Days</div>
+              <div className="tabular-nums mt-0.5 text-sm font-bold text-[#2EE6A6] sm:text-base">
                 {summary.optimalDays}
               </div>
-              <div className="tabular-nums mt-0.5 text-[11px] text-slate-400">
+              <div className="tabular-nums mt-0.5 truncate text-[11px] text-slate-400">
                 {summary.moderateDays} mod · {summary.overloadDays} over
               </div>
             </div>
 
-            <div className="rounded-2xl border border-white/5 bg-[#0F131C]/80 px-3.5 py-2.5">
-              <div className="text-[11px] text-slate-400">Avg Daily Intake</div>
-              <div className="tabular-nums mt-0.5 text-base font-bold text-white">
+            <div className="min-w-0 rounded-2xl border border-white/5 bg-[#0F131C]/80 p-3 sm:px-3.5 sm:py-2.5">
+              <div className="truncate text-[11px] text-slate-400">Avg Daily Intake</div>
+              <div className="tabular-nums mt-0.5 text-sm font-bold text-white sm:text-base">
                 {summary.avgCalories.toLocaleString()}{' '}
                 <span className="text-xs font-normal text-slate-400">kcal</span>
               </div>
-              <div className="tabular-nums mt-0.5 text-[11px] text-[#2EE6A6]">
+              <div className="tabular-nums mt-0.5 truncate text-[11px] text-[#2EE6A6]">
                 Avg Protein {summary.avgProteinG}g
               </div>
             </div>
 
-            <div className="rounded-2xl border border-white/5 bg-[#0F131C]/80 px-3.5 py-2.5">
-              <div className="text-[11px] text-slate-400">Total Active Burn</div>
-              <div className="tabular-nums mt-0.5 text-base font-bold text-[#FFB020]">
+            <div className="min-w-0 rounded-2xl border border-white/5 bg-[#0F131C]/80 p-3 sm:px-3.5 sm:py-2.5">
+              <div className="truncate text-[11px] text-slate-400">Total Active Burn</div>
+              <div className="tabular-nums mt-0.5 text-sm font-bold text-[#FFB020] sm:text-base">
                 +{summary.totalActiveCalories.toLocaleString()}{' '}
                 <span className="text-xs font-normal text-slate-400">kcal</span>
               </div>
-              <div className="tabular-nums mt-0.5 text-[11px] text-slate-400">
+              <div className="tabular-nums mt-0.5 truncate text-[11px] text-slate-400">
                 Avg Weight:{' '}
                 {summary.avgWeightKg !== null ? `${summary.avgWeightKg.toFixed(1)} kg` : '—'}
               </div>
@@ -470,12 +470,12 @@ export function MonthlyCalendarCard({
         ) : null}
 
         {error ? (
-          <div className="flex items-center justify-between gap-3 rounded-2xl border border-[#FF5C6C]/30 bg-[#FF5C6C]/10 px-3.5 py-2.5 text-xs text-[#FF8A95]">
-            <span>{error}</span>
+          <div className="flex flex-wrap items-center justify-between gap-2.5 rounded-2xl border border-[#FF5C6C]/30 bg-[#FF5C6C]/10 px-3.5 py-2.5 text-xs text-[#FF8A95]">
+            <span className="min-w-0 flex-1 break-words">{error}</span>
             <button
               type="button"
               onClick={() => void loadMonth(month, true)}
-              className="inline-flex min-h-[34px] items-center gap-1 rounded-xl bg-white/10 px-2.5 py-1 font-semibold text-white transition hover:bg-white/20"
+              className="inline-flex min-h-[34px] shrink-0 items-center gap-1 rounded-xl bg-white/10 px-2.5 py-1 font-semibold text-white transition hover:bg-white/20"
             >
               <RefreshCw className="h-3 w-3" />
               Retry
@@ -485,19 +485,19 @@ export function MonthlyCalendarCard({
 
         {/* Calendar Grid */}
         {loading && !calendarData ? (
-          <div className="grid grid-cols-7 gap-1.5">
+          <div className="grid grid-cols-7 gap-1 sm:gap-1.5">
             {Array.from({ length: 35 }).map((_, idx) => (
               <div
                 key={idx}
-                className="h-14 animate-pulse rounded-xl border border-white/5 bg-[#0F131C]/70 sm:h-16"
+                className="min-h-[46px] animate-pulse rounded-xl border border-white/5 bg-[#0F131C]/70 sm:h-16"
               />
             ))}
           </div>
         ) : calendarData ? (
-          <div>
+          <div className="min-w-0">
             {/* Legend */}
             <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <span className="inline-flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-[#2EE6A6]" />
                   Optimal
@@ -511,7 +511,7 @@ export function MonthlyCalendarCard({
                   Overload
                 </span>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 <span className="inline-flex items-center gap-1">
                   <Dumbbell className="h-3 w-3 text-[#FFB020]" />
                   Workout
@@ -524,18 +524,18 @@ export function MonthlyCalendarCard({
             </div>
 
             {/* Weekday Header */}
-            <div className="mb-1.5 grid grid-cols-7 gap-1.5 text-center text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            <div className="mb-1.5 grid grid-cols-7 gap-1 text-center text-[10px] font-semibold uppercase tracking-wider text-slate-500 sm:gap-1.5 sm:text-[11px]">
               {WEEKDAY_LABELS.map((day) => (
-                <div key={day} className="py-1">
+                <div key={day} className="min-w-0 truncate py-1">
                   {day}
                 </div>
               ))}
             </div>
 
             {/* 7-column Days Grid */}
-            <div className="grid grid-cols-7 gap-1.5">
+            <div className="grid grid-cols-7 gap-1 sm:gap-1.5">
               {Array.from({ length: firstDayOffset }).map((_, offsetIdx) => (
-                <div key={`offset-${offsetIdx}`} aria-hidden="true" className="min-h-[48px] sm:min-h-[62px]" />
+                <div key={`offset-${offsetIdx}`} aria-hidden="true" className="min-h-[46px] sm:min-h-[64px]" />
               ))}
 
               {calendarData.days.map((day) => {
@@ -550,15 +550,15 @@ export function MonthlyCalendarCard({
                     onClick={() => setSelectedDate(day.date)}
                     aria-label={`${day.date}, ${STATUS_BADGE[day.status].label}`}
                     aria-pressed={isSelected}
-                    className={`relative flex min-h-[50px] cursor-pointer flex-col justify-between rounded-xl border p-1.5 text-left transition sm:min-h-[64px] sm:p-2 ${
+                    className={`relative flex min-w-0 min-h-[46px] cursor-pointer flex-col justify-between rounded-xl border p-1 text-left transition sm:min-h-[64px] sm:p-2 ${
                       STATUS_CELL_RING_CLASS[day.status]
                     } ${isToday ? 'ring-1 ring-[#38BDF8]' : ''} ${
                       isSelected ? 'ring-2 ring-white/60 bg-white/[0.08]' : ''
                     }`}
                   >
-                    <div className="flex w-full items-center justify-between gap-1">
+                    <div className="flex w-full items-center justify-between gap-0.5 sm:gap-1">
                       <span
-                        className={`tabular-nums text-xs font-semibold ${
+                        className={`tabular-nums text-[11px] font-semibold sm:text-xs ${
                           isToday ? 'text-[#38BDF8]' : day.hasData ? 'text-white' : 'text-slate-500'
                         }`}
                       >
@@ -569,7 +569,7 @@ export function MonthlyCalendarCard({
                       />
                     </div>
 
-                    <div className="flex w-full items-end justify-between gap-1">
+                    <div className="flex w-full items-end justify-between gap-0.5 sm:gap-1">
                       {day.consumedCalories > 0 ? (
                         <span className="tabular-nums hidden truncate text-[10px] font-medium text-slate-300 sm:inline">
                           {day.consumedCalories.toLocaleString()}
@@ -578,7 +578,7 @@ export function MonthlyCalendarCard({
                         <span className="text-[10px] text-transparent">.</span>
                       )}
 
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-0.5 sm:gap-1">
                         {day.workoutCount > 0 ? (
                           <span
                             title={`${day.workoutCount} workout(s)`}
@@ -602,9 +602,9 @@ export function MonthlyCalendarCard({
 
         {/* Selected Day Detail Panel */}
         {selectedDay ? (
-          <div className="rounded-2xl border border-white/10 bg-[#0F131C]/85 p-4">
+          <div className="min-w-0 rounded-2xl border border-white/10 bg-[#0F131C]/85 p-3.5 sm:p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
                 <h3 className="text-sm font-semibold text-white">
                   {formatDayDetailDate(selectedDay.date)}
                 </h3>
@@ -616,7 +616,7 @@ export function MonthlyCalendarCard({
               </div>
 
               <span
-                className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${
+                className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${
                   STATUS_BADGE[selectedDay.status].className
                 }`}
               >

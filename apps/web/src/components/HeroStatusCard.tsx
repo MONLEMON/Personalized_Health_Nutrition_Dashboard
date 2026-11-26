@@ -243,41 +243,43 @@ export function HeroStatusCard({
 
   return (
     <BentoCard accentGlow={theme.accentGlow} className="w-full">
-      <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex min-w-0 flex-col gap-5 sm:gap-6 lg:flex-row lg:items-center lg:justify-between">
         {/* Left: Companion Orb + Core Readiness Copy */}
-        <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-center sm:gap-7">
+        <div className="flex min-w-0 flex-col items-center gap-5 sm:flex-row sm:items-center sm:gap-7">
           <StatusOrb status={readiness.status} score={readiness.score} />
 
-          <div className="flex flex-col items-center text-center sm:items-start sm:text-left">
-            <div className="mb-2 flex flex-wrap items-center justify-center gap-2 sm:justify-start">
+          <div className="flex min-w-0 max-w-full flex-col items-center text-center sm:items-start sm:text-left">
+            <div className="mb-2 flex max-w-full flex-wrap items-center justify-center gap-1.5 sm:justify-start sm:gap-2">
               <span
-                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold tracking-wide ${theme.badgeClass}`}
+                className={`inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold tracking-wide sm:px-3 ${theme.badgeClass}`}
               >
-                <span className={`h-1.5 w-1.5 rounded-full ${theme.dotClass}`} />
-                {readiness.badge}
+                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${theme.dotClass}`} />
+                <span className="truncate">{readiness.badge}</span>
               </span>
 
-              <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-slate-300">
-                <Sparkles className="h-3 w-3 text-slate-400" />
-                {GOAL_BADGE_LABELS[goal.goalType]} ({adjustmentText})
+              <span className="inline-flex max-w-full items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-slate-300">
+                <Sparkles className="h-3 w-3 shrink-0 text-slate-400" />
+                <span className="truncate">
+                  {GOAL_BADGE_LABELS[goal.goalType]} ({adjustmentText})
+                </span>
               </span>
 
-              <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-slate-300">
-                <ShieldCheck className="h-3 w-3 text-[#38BDF8]" />
-                {formulaLabel}
+              <span className="inline-flex max-w-full items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-slate-300">
+                <ShieldCheck className="h-3 w-3 shrink-0 text-[#38BDF8]" />
+                <span className="truncate">{formulaLabel}</span>
               </span>
 
               {energy.cyclingLabel ? (
                 <span
-                  className={`tabular-nums inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold ${cyclingPillClass}`}
+                  className={`tabular-nums inline-flex max-w-full items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold ${cyclingPillClass}`}
                 >
                   <Zap className="h-3 w-3 shrink-0" />
-                  {energy.cyclingLabel}
+                  <span className="truncate">{energy.cyclingLabel}</span>
                 </span>
               ) : null}
             </div>
 
-            <div className="flex items-baseline gap-3">
+            <div className="flex max-w-full flex-wrap items-baseline justify-center gap-x-3 gap-y-1 sm:justify-start">
               <span
                 className="tabular-nums text-5xl font-bold tracking-tight text-white sm:text-6xl"
                 style={{ textShadow: `0 0 28px ${theme.glowBg}` }}
@@ -289,15 +291,15 @@ export function HeroStatusCard({
               </span>
             </div>
 
-            <h1 className="mt-2 text-lg font-semibold tracking-tight text-white sm:text-xl">
+            <h1 className="mt-2 max-w-full break-words text-lg font-semibold tracking-tight text-white sm:text-xl">
               {readiness.headline}
             </h1>
-            <p className="mt-1 max-w-xl text-sm leading-relaxed text-slate-400">
+            <p className="mt-1 max-w-xl break-words text-sm leading-relaxed text-slate-400">
               {readiness.summary}
             </p>
 
             {/* Adherence & Body Snapshot */}
-            <div className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-slate-400 sm:justify-start">
+            <div className="mt-3 flex max-w-full flex-wrap items-center justify-center gap-x-3.5 gap-y-1 text-xs text-slate-400 sm:justify-start sm:gap-x-4">
               <span className="tabular-nums">
                 Calorie Adherence:{' '}
                 <strong className="font-semibold text-slate-200">
@@ -330,13 +332,13 @@ export function HeroStatusCard({
         </div>
 
         {/* Right: Compact Energy Metrics Strip */}
-        <div className="grid grid-cols-3 gap-2 sm:gap-3 lg:w-[380px] lg:shrink-0">
+        <div className="grid min-w-0 grid-cols-3 gap-2 sm:gap-3 lg:w-[380px] lg:shrink-0">
           <div className="min-w-0 rounded-2xl border border-white/5 bg-[#0F131C]/90 p-2.5 sm:p-3.5">
-            <div className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-slate-400 sm:gap-1.5 sm:text-[11px]">
+            <div className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-slate-400 sm:gap-1.5 sm:text-[11px] sm:tracking-wider">
               <Gauge className="h-3.5 w-3.5 shrink-0 text-[#38BDF8]" />
               <span className="truncate">Dynamic TDEE</span>
             </div>
-            <div className="tabular-nums mt-1.5 text-lg font-bold text-white sm:mt-2 sm:text-2xl">
+            <div className="tabular-nums mt-1.5 text-base font-bold text-white sm:mt-2 sm:text-2xl">
               {energy.dynamicTdee.toLocaleString()}
             </div>
             <div className="tabular-nums mt-0.5 truncate text-[10px] text-slate-500 sm:text-[11px]">
@@ -345,25 +347,25 @@ export function HeroStatusCard({
           </div>
 
           <div className="min-w-0 rounded-2xl border border-white/5 bg-[#0F131C]/90 p-2.5 sm:p-3.5">
-            <div className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-slate-400 sm:gap-1.5 sm:text-[11px]">
+            <div className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-slate-400 sm:gap-1.5 sm:text-[11px] sm:tracking-wider">
               <Flame className="h-3.5 w-3.5 shrink-0 text-[#FFB020]" />
               <span className="truncate">Active Burn</span>
             </div>
-            <div className="tabular-nums mt-1.5 text-lg font-bold text-[#FFB020] sm:mt-2 sm:text-2xl">
+            <div className="tabular-nums mt-1.5 text-base font-bold text-[#FFB020] sm:mt-2 sm:text-2xl">
               +{energy.activeCalories.toLocaleString()}
             </div>
             <div className="mt-0.5 truncate text-[10px] text-slate-500 sm:text-[11px]">kcal today</div>
           </div>
 
           <div className="min-w-0 rounded-2xl border border-white/5 bg-[#0F131C]/90 p-2.5 sm:p-3.5">
-            <div className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-slate-400 sm:gap-1.5 sm:text-[11px]">
+            <div className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-slate-400 sm:gap-1.5 sm:text-[11px] sm:tracking-wider">
               <Zap
                 className={`h-3.5 w-3.5 shrink-0 ${isOverTarget ? 'text-[#FF5C6C]' : 'text-[#2EE6A6]'}`}
               />
               <span className="truncate">{isOverTarget ? 'Over Target' : 'Remaining'}</span>
             </div>
             <div
-              className={`tabular-nums mt-1.5 text-lg font-bold sm:mt-2 sm:text-2xl ${
+              className={`tabular-nums mt-1.5 text-base font-bold sm:mt-2 sm:text-2xl ${
                 isOverTarget ? 'text-[#FF5C6C]' : 'text-[#2EE6A6]'
               }`}
             >
@@ -378,12 +380,15 @@ export function HeroStatusCard({
 
       {/* Compact Weekly Calorie Budget Panel */}
       {weeklyBudget ? (
-        <div className="mt-5 rounded-2xl border border-white/5 bg-[#0F131C]/85 p-3.5 sm:p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-2 text-xs">
-              <span className="inline-flex items-center gap-1.5 font-semibold text-white">
-                <CalendarDays className="h-3.5 w-3.5 text-[#38BDF8]" />
-                Weekly Budget ({weeklyBudget.weekStartDate} → {weeklyBudget.weekEndDate})
+        <div className="mt-5 min-w-0 rounded-2xl border border-white/5 bg-[#0F131C]/85 p-3.5 sm:p-4">
+          <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+            <div className="flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+              <span className="inline-flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 font-semibold text-white">
+                <CalendarDays className="h-3.5 w-3.5 shrink-0 text-[#38BDF8]" />
+                <span>Weekly Budget</span>
+                <span className="tabular-nums text-slate-300 font-medium">
+                  ({weeklyBudget.weekStartDate} → {weeklyBudget.weekEndDate})
+                </span>
               </span>
               {weeklyBudget.cyclingEnabled ? (
                 <span className="rounded-full border border-[#38BDF8]/30 bg-[#38BDF8]/10 px-2 py-0.5 text-[10px] font-semibold text-[#38BDF8]">
@@ -392,13 +397,13 @@ export function HeroStatusCard({
               ) : null}
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 text-xs">
+            <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2 text-xs">
               <span className="tabular-nums font-semibold text-slate-200">
                 {weeklyBudget.weeklyConsumedCalories.toLocaleString()} /{' '}
                 {weeklyBudget.weeklyTargetCalories.toLocaleString()} kcal
               </span>
               <span
-                className={`tabular-nums rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${
+                className={`tabular-nums max-w-full rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${
                   weeklyOver
                     ? 'border-[#FF5C6C]/35 bg-[#FF5C6C]/12 text-[#FF5C6C]'
                     : 'border-[#2EE6A6]/35 bg-[#2EE6A6]/12 text-[#2EE6A6]'
@@ -420,7 +425,7 @@ export function HeroStatusCard({
             />
           </div>
 
-          <div className="mt-3 grid grid-cols-7 gap-1 sm:gap-2">
+          <div className="no-scrollbar mt-3 flex gap-2 overflow-x-auto px-0.5 pt-0.5 pb-1 snap-x snap-mandatory sm:grid sm:grid-cols-7 sm:gap-2 sm:overflow-visible sm:p-0">
             {weeklyBudget.days.map((day) => {
               const isDayOver = day.consumedCalories > day.targetCalories * 1.05;
               const dayFillPct =
@@ -442,7 +447,7 @@ export function HeroStatusCard({
                       ? ` (${day.cyclingOffset > 0 ? '+' : ''}${day.cyclingOffset} kcal)`
                       : ''
                   }`}
-                  className={`min-w-0 rounded-xl border px-1.5 py-2 text-center transition sm:px-2.5 ${
+                  className={`min-w-[72px] shrink-0 snap-start rounded-xl border px-2 py-2 text-center transition sm:min-w-0 sm:shrink sm:px-2 ${
                     day.isToday
                       ? 'border-[#2EE6A6]/60 bg-[#2EE6A6]/[0.09] ring-1 ring-[#2EE6A6]/60'
                       : 'border-white/5 bg-[#0A0C10]/70'

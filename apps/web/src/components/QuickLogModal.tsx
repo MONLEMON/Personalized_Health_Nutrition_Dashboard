@@ -566,7 +566,7 @@ export function QuickLogModal({
   };
 
   const inputClasses =
-    'min-h-[44px] w-full rounded-2xl border border-white/10 bg-[#0A0C10]/80 px-3.5 py-2.5 text-base sm:text-sm text-white placeholder:text-slate-500 focus:border-[#2EE6A6]/60 focus:outline-none focus:ring-1 focus:ring-[#2EE6A6]/40';
+    'min-h-[44px] w-full min-w-0 max-w-full rounded-2xl border border-white/10 bg-[#0A0C10]/80 px-3.5 py-2.5 text-base sm:text-sm text-white placeholder:text-slate-500 focus:border-[#2EE6A6]/60 focus:outline-none focus:ring-1 focus:ring-[#2EE6A6]/40';
 
   const renderErrorAlert = () => {
     if (!error) return null;
@@ -578,7 +578,7 @@ export function QuickLogModal({
         <div className="flex items-start gap-2">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-[#FF5C6C]" />
           <div className="min-w-0 flex-1 space-y-2">
-            <p className="leading-relaxed">{error}</p>
+            <p className="break-words leading-relaxed">{error}</p>
             {activeTab === 'ai' && (
               <div className="flex flex-wrap items-center gap-2">
                 {aiStep === 'input' ? (
@@ -623,7 +623,7 @@ export function QuickLogModal({
         }
       }}
     >
-      <div className="animate-sheet-up relative max-h-[90dvh] w-full overflow-y-auto rounded-t-3xl rounded-b-none border-t border-x border-white/10 bg-[#141720]/98 px-5 pt-3 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-[0_-24px_64px_-12px_rgba(0,0,0,0.95)] backdrop-blur-2xl sm:max-w-lg sm:rounded-3xl sm:border sm:p-6 sm:shadow-[0_32px_80px_-16px_rgba(0,0,0,0.95)]">
+      <div className="animate-sheet-up relative max-h-[90dvh] w-full overflow-x-hidden overflow-y-auto rounded-t-3xl rounded-b-none border-t border-x border-white/10 bg-[#141720]/98 px-4 pt-3 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-[0_-24px_64px_-12px_rgba(0,0,0,0.95)] backdrop-blur-2xl sm:max-w-lg sm:rounded-3xl sm:border sm:p-6 sm:shadow-[0_32px_80px_-16px_rgba(0,0,0,0.95)]">
         <div
           aria-hidden="true"
           className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/25 to-transparent"
@@ -637,7 +637,7 @@ export function QuickLogModal({
 
         {/* Header */}
         <div className="flex items-center justify-between gap-3">
-          <div>
+          <div className="min-w-0 flex-1">
             <h2 id="quick-log-modal-title" className="text-lg font-semibold text-white">
               Quick Log
             </h2>
@@ -650,7 +650,7 @@ export function QuickLogModal({
             onClick={onClose}
             disabled={busy}
             aria-label="Close modal"
-            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-slate-400 transition hover:bg-white/10 hover:text-white disabled:opacity-50"
+            className="flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-slate-400 transition hover:bg-white/10 hover:text-white disabled:opacity-50"
           >
             <X className="h-4 w-4" />
           </button>
@@ -665,14 +665,15 @@ export function QuickLogModal({
               setActiveTab('ai');
               setError(null);
             }}
-            className={`flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl px-1.5 text-[11px] font-semibold whitespace-nowrap transition sm:text-xs ${
+            className={`flex min-h-[44px] min-w-0 items-center justify-center gap-1.5 rounded-xl px-1.5 text-[11px] font-semibold whitespace-nowrap transition sm:text-xs ${
               activeTab === 'ai'
                 ? 'bg-gradient-to-r from-[#2EE6A6] to-[#38BDF8] text-[#081016] shadow'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
             <Sparkles className="h-3.5 w-3.5 shrink-0" />
-            <span>AI Smart Log</span>
+            <span className="sm:hidden">AI Log</span>
+            <span className="hidden sm:inline">AI Smart Log</span>
           </button>
           <button
             type="button"
@@ -681,7 +682,7 @@ export function QuickLogModal({
               setActiveTab('meal');
               setError(null);
             }}
-            className={`flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl px-1.5 text-[11px] font-semibold whitespace-nowrap transition sm:text-xs ${
+            className={`flex min-h-[44px] min-w-0 items-center justify-center gap-1.5 rounded-xl px-1.5 text-[11px] font-semibold whitespace-nowrap transition sm:text-xs ${
               activeTab === 'meal'
                 ? 'bg-[#2EE6A6] text-[#081016] shadow'
                 : 'text-slate-400 hover:text-white'
@@ -697,7 +698,7 @@ export function QuickLogModal({
               setActiveTab('workout');
               setError(null);
             }}
-            className={`flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl px-1.5 text-[11px] font-semibold whitespace-nowrap transition sm:text-xs ${
+            className={`flex min-h-[44px] min-w-0 items-center justify-center gap-1.5 rounded-xl px-1.5 text-[11px] font-semibold whitespace-nowrap transition sm:text-xs ${
               activeTab === 'workout'
                 ? 'bg-[#FFB020] text-[#081016] shadow'
                 : 'text-slate-400 hover:text-white'
@@ -710,11 +711,11 @@ export function QuickLogModal({
 
         {/* TAB 1: AI SMART LOG */}
         {activeTab === 'ai' ? (
-          <div className="mt-4 space-y-4">
+          <div className="mt-4 min-w-0 space-y-4">
             {analyzing ? (
               <div className="space-y-3" aria-live="polite" aria-busy="true">
                 <div className="flex items-center gap-2 rounded-2xl border border-[#38BDF8]/25 bg-[#38BDF8]/10 px-3.5 py-2.5 text-xs font-medium text-[#38BDF8]">
-                  <Loader2 className="h-4 w-4 animate-spin text-[#2EE6A6]" />
+                  <Loader2 className="h-4 w-4 shrink-0 animate-spin text-[#2EE6A6]" />
                   <span>Analyzing meal portions and macros with Gemini AI…</span>
                 </div>
 
@@ -738,11 +739,11 @@ export function QuickLogModal({
                 ))}
               </div>
             ) : aiStep === 'input' ? (
-              <div className="space-y-4">
-                <div>
+              <div className="min-w-0 space-y-4">
+                <div className="min-w-0">
                   <label
                     htmlFor="ai-smart-log-textarea"
-                    className="mb-1.5 flex items-center justify-between text-xs font-medium text-slate-300"
+                    className="mb-1.5 flex flex-wrap items-center justify-between gap-1 text-xs font-medium text-slate-300"
                   >
                     <span>Describe your meal (Thai or English)</span>
                     <span className="text-[11px] text-slate-500">Text, photo, or both</span>
@@ -753,11 +754,11 @@ export function QuickLogModal({
                     value={aiText}
                     onChange={(e) => setAiText(e.target.value)}
                     placeholder="เช่น ข้าวสวย 200 กรัม อกไก่ย่าง 1 ชิ้น ไข่ต้ม 2 ฟอง หรืออัปโหลดรูปอาหาร/ฉลากโภชนาการ..."
-                    className="min-h-[96px] w-full resize-y rounded-2xl border border-white/10 bg-[#0A0C10]/80 px-3.5 py-2.5 text-base leading-relaxed text-white placeholder:text-slate-500 focus:border-[#2EE6A6]/60 focus:outline-none focus:ring-1 focus:ring-[#2EE6A6]/40 sm:text-sm"
+                    className="min-h-[96px] w-full min-w-0 max-w-full resize-y rounded-2xl border border-white/10 bg-[#0A0C10]/80 px-3.5 py-2.5 text-base leading-relaxed text-white placeholder:text-slate-500 focus:border-[#2EE6A6]/60 focus:outline-none focus:ring-1 focus:ring-[#2EE6A6]/40 sm:text-sm"
                   />
 
                   {/* 1-tap Accuracy Hint chips */}
-                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
                     <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
                       Accuracy hints:
                     </span>
@@ -774,7 +775,7 @@ export function QuickLogModal({
                             return `${trimmed}, ${hint}`;
                           });
                         }}
-                        className="min-h-[34px] rounded-full border border-[#38BDF8]/25 bg-[#38BDF8]/10 px-2.5 py-1 text-[11px] font-medium text-[#38BDF8] transition hover:border-[#38BDF8]/50 hover:bg-[#38BDF8]/20"
+                        className="min-h-[34px] max-w-full rounded-full border border-[#38BDF8]/25 bg-[#38BDF8]/10 px-2.5 py-1 text-left text-[11px] font-medium text-[#38BDF8] transition hover:border-[#38BDF8]/50 hover:bg-[#38BDF8]/20"
                       >
                         + {hint}
                       </button>
@@ -783,12 +784,12 @@ export function QuickLogModal({
                 </div>
 
                 {/* 1-tap Thai/English sample prompt chips */}
-                <div>
+                <div className="min-w-0">
                   <div className="mb-2 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-slate-400">
-                    <Sparkles className="h-3 w-3 text-[#2EE6A6]" />
+                    <Sparkles className="h-3 w-3 shrink-0 text-[#2EE6A6]" />
                     <span>Sample Prompts</span>
                   </div>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex min-w-0 flex-wrap gap-2">
                     {AI_SAMPLE_PROMPTS.map((sample) => (
                       <button
                         key={sample}
@@ -797,7 +798,7 @@ export function QuickLogModal({
                           setAiText(sample);
                           setError(null);
                         }}
-                        className="min-h-[40px] rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-left text-xs font-medium text-slate-200 transition hover:border-[#2EE6A6]/40 hover:bg-[#2EE6A6]/10 hover:text-[#2EE6A6] sm:min-h-0"
+                        className="min-h-[40px] max-w-full rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-left text-xs leading-snug font-medium text-slate-200 transition hover:border-[#2EE6A6]/40 hover:bg-[#2EE6A6]/10 hover:text-[#2EE6A6] sm:min-h-0"
                       >
                         {sample}
                       </button>
@@ -806,7 +807,7 @@ export function QuickLogModal({
                 </div>
 
                 {/* Photo Upload / Mobile Camera */}
-                <div>
+                <div className="min-w-0">
                   <input
                     id={fileInputId}
                     ref={fileInputRef}
@@ -820,31 +821,31 @@ export function QuickLogModal({
                   {!resizedImage ? (
                     <label
                       htmlFor={fileInputId}
-                      className={`flex min-h-[44px] w-full cursor-pointer items-center justify-center gap-2 rounded-2xl border border-dashed border-white/15 bg-[#0A0C10]/65 px-4 py-3 text-sm font-medium text-slate-200 transition hover:border-[#38BDF8]/50 hover:bg-[#38BDF8]/10 hover:text-white sm:text-xs ${
+                      className={`flex min-h-[44px] w-full cursor-pointer items-center justify-center gap-2 rounded-2xl border border-dashed border-white/15 bg-[#0A0C10]/65 px-4 py-3 text-center text-sm font-medium text-slate-200 transition hover:border-[#38BDF8]/50 hover:bg-[#38BDF8]/10 hover:text-white sm:text-xs ${
                         resizingImage ? 'pointer-events-none opacity-60' : ''
                       }`}
                     >
                       {resizingImage ? (
                         <>
-                          <Loader2 className="h-4 w-4 animate-spin text-[#38BDF8]" />
+                          <Loader2 className="h-4 w-4 shrink-0 animate-spin text-[#38BDF8]" />
                           <span>Optimizing photo (1280px JPEG)…</span>
                         </>
                       ) : (
                         <>
-                          <Camera className="h-4 w-4 text-[#38BDF8]" />
-                          <span>Take Photo or Upload Food / Nutrition Label</span>
+                          <Camera className="h-4 w-4 shrink-0 text-[#38BDF8]" />
+                          <span className="min-w-0">Take Photo or Upload Food / Nutrition Label</span>
                         </>
                       )}
                     </label>
                   ) : (
-                    <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-[#0A0C10]/85 p-2.5">
-                      <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex min-w-0 items-center justify-between gap-2.5 rounded-2xl border border-white/10 bg-[#0A0C10]/85 p-2.5 sm:gap-3">
+                      <div className="flex min-w-0 flex-1 items-center gap-2.5 sm:gap-3">
                         <img
                           src={resizedImage.previewUrl}
                           alt="Uploaded meal preview"
                           className="h-14 w-14 shrink-0 rounded-xl border border-white/10 object-cover"
                         />
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
                           <p className="truncate text-xs font-semibold text-white">
                             {resizedImage.file.name}
                           </p>
@@ -881,7 +882,7 @@ export function QuickLogModal({
                     type="button"
                     disabled={busy}
                     onClick={onClose}
-                    className="min-h-[44px] rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm font-semibold text-slate-300 transition hover:bg-white/10 disabled:opacity-50 sm:text-xs"
+                    className="min-h-[44px] shrink-0 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm font-semibold text-slate-300 transition hover:bg-white/10 disabled:opacity-50 sm:text-xs"
                   >
                     Cancel
                   </button>
@@ -889,16 +890,16 @@ export function QuickLogModal({
                     type="button"
                     onClick={() => void handleAnalyzeWithAI()}
                     disabled={resizingImage || analyzing || (!aiText.trim() && !resizedImage)}
-                    className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#2EE6A6] to-[#38BDF8] px-5 py-2.5 text-sm font-bold text-[#081016] shadow-[0_0_24px_-6px_rgba(46,230,166,0.5)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 sm:text-xs"
+                    className="inline-flex min-h-[44px] min-w-0 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#2EE6A6] to-[#38BDF8] px-4 py-2.5 text-sm font-bold text-[#081016] shadow-[0_0_24px_-6px_rgba(46,230,166,0.5)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 sm:px-5 sm:text-xs"
                   >
-                    <Sparkles className="h-4 w-4" />
-                    <span>Analyze with Gemini AI</span>
+                    <Sparkles className="h-4 w-4 shrink-0" />
+                    <span className="truncate">Analyze with Gemini AI</span>
                   </button>
                 </div>
               </div>
             ) : (
               /* Step 2: Preview & Edit before Saving */
-              <form onSubmit={handleConfirmAiBatch} className="space-y-3.5">
+              <form onSubmit={handleConfirmAiBatch} className="min-w-0 space-y-3.5">
                 {/* Preview Header: Meal Type + Back / Re-analyze */}
                 <div className="flex flex-wrap items-center justify-between gap-2.5">
                   <button
@@ -908,13 +909,13 @@ export function QuickLogModal({
                       setAiStep('input');
                       setError(null);
                     }}
-                    className="inline-flex min-h-[44px] items-center gap-1.5 rounded-2xl border border-white/10 bg-white/[0.04] px-3.5 py-2 text-xs font-semibold text-slate-200 transition hover:bg-white/10 disabled:opacity-50"
+                    className="inline-flex min-h-[44px] shrink-0 items-center gap-1.5 rounded-2xl border border-white/10 bg-white/[0.04] px-3.5 py-2 text-xs font-semibold text-slate-200 transition hover:bg-white/10 disabled:opacity-50"
                   >
                     <ArrowLeft className="h-3.5 w-3.5" />
                     Back / Re-analyze
                   </button>
 
-                  <div className="min-w-[140px] flex-1 sm:flex-none">
+                  <div className="min-w-0 flex-1 sm:min-w-[140px] sm:flex-none">
                     <label htmlFor="ai-preview-meal-type" className="sr-only">
                       Meal Type
                     </label>
@@ -935,7 +936,7 @@ export function QuickLogModal({
                 </div>
 
                 {/* Total Preview kcal & P/C/F strip */}
-                <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-[#0A0C10]/85 px-3.5 py-2.5">
+                <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-[#0A0C10]/85 px-3.5 py-2.5">
                   <div className="tabular-nums text-xs font-semibold text-white">
                     Total:{' '}
                     <span className="text-sm font-bold text-white">
@@ -968,16 +969,16 @@ export function QuickLogModal({
                       return (
                         <div
                           key={item.id}
-                          className="rounded-2xl border border-white/10 bg-[#0F131C]/90 p-3.5 space-y-2.5"
+                          className="min-w-0 space-y-2.5 rounded-2xl border border-white/10 bg-[#0F131C]/90 p-3.5"
                         >
                           <div className="flex items-center justify-between gap-2">
-                            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
                               <span
-                                className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${conf.classes}`}
+                                className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${conf.classes}`}
                               >
                                 {conf.label}
                               </span>
-                              <span className="truncate text-[11px] text-slate-400">
+                              <span className="min-w-0 truncate text-[11px] text-slate-400">
                                 {item.portionDesc || `Item #${idx + 1}`}
                               </span>
                             </div>
@@ -992,7 +993,7 @@ export function QuickLogModal({
                             </button>
                           </div>
 
-                          <div>
+                          <div className="min-w-0">
                             <label className="mb-1 block text-[11px] font-medium text-slate-400">
                               Food Name
                             </label>
@@ -1009,7 +1010,7 @@ export function QuickLogModal({
                           </div>
 
                           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                            <div>
+                            <div className="min-w-0">
                               <label className="mb-1 block text-[11px] font-medium text-slate-300">
                                 Calories
                               </label>
@@ -1027,7 +1028,7 @@ export function QuickLogModal({
                                 className={`${inputClasses} tabular-nums`}
                               />
                             </div>
-                            <div>
+                            <div className="min-w-0">
                               <label className="mb-1 block text-[11px] font-medium text-[#2EE6A6]">
                                 Protein (g)
                               </label>
@@ -1045,7 +1046,7 @@ export function QuickLogModal({
                                 className={`${inputClasses} tabular-nums`}
                               />
                             </div>
-                            <div>
+                            <div className="min-w-0">
                               <label className="mb-1 block text-[11px] font-medium text-[#38BDF8]">
                                 Carbs (g)
                               </label>
@@ -1063,7 +1064,7 @@ export function QuickLogModal({
                                 className={`${inputClasses} tabular-nums`}
                               />
                             </div>
-                            <div>
+                            <div className="min-w-0">
                               <label className="mb-1 block text-[11px] font-medium text-[#FBBF24]">
                                 Fat (g)
                               </label>
@@ -1128,9 +1129,9 @@ export function QuickLogModal({
           /* TAB 2 & TAB 3: MANUAL MEAL & WORKOUT */
           <>
             {/* 1-Click Quick-Fill Presets */}
-            <div className="mt-4">
+            <div className="mt-4 min-w-0">
               <div className="mb-2 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-slate-400">
-                <Sparkles className="h-3 w-3 text-[#2EE6A6]" />
+                <Sparkles className="h-3 w-3 shrink-0 text-[#2EE6A6]" />
                 <span>1-Click Presets</span>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -1140,7 +1141,7 @@ export function QuickLogModal({
                         key={preset.label}
                         type="button"
                         onClick={() => applyMealPreset(preset)}
-                        className="min-h-[40px] rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-2 text-xs font-medium text-slate-200 transition hover:border-[#2EE6A6]/40 hover:bg-[#2EE6A6]/10 hover:text-[#2EE6A6] sm:min-h-0 sm:px-3 sm:py-1.5"
+                        className="min-h-[40px] max-w-full rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-2 text-xs font-medium text-slate-200 transition hover:border-[#2EE6A6]/40 hover:bg-[#2EE6A6]/10 hover:text-[#2EE6A6] sm:min-h-0 sm:px-3 sm:py-1.5"
                       >
                         {preset.label}
                       </button>
@@ -1150,7 +1151,7 @@ export function QuickLogModal({
                         key={preset.label}
                         type="button"
                         onClick={() => applyWorkoutPreset(preset)}
-                        className="min-h-[40px] rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-2 text-xs font-medium text-slate-200 transition hover:border-[#FFB020]/40 hover:bg-[#FFB020]/10 hover:text-[#FFB020] sm:min-h-0 sm:px-3 sm:py-1.5"
+                        className="min-h-[40px] max-w-full rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-2 text-xs font-medium text-slate-200 transition hover:border-[#FFB020]/40 hover:bg-[#FFB020]/10 hover:text-[#FFB020] sm:min-h-0 sm:px-3 sm:py-1.5"
                       >
                         {preset.label}
                       </button>
@@ -1159,11 +1160,11 @@ export function QuickLogModal({
             </div>
 
             {/* Form */}
-            <form onSubmit={handleSubmit} className="mt-4 space-y-3.5">
+            <form onSubmit={handleSubmit} className="mt-4 min-w-0 space-y-3.5">
               {activeTab === 'meal' ? (
                 <>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    <div className="sm:col-span-2">
+                    <div className="min-w-0 sm:col-span-2">
                       <label className="mb-1 block text-xs font-medium text-slate-300">
                         Food / Meal Name
                       </label>
@@ -1176,7 +1177,7 @@ export function QuickLogModal({
                         className={inputClasses}
                       />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <label className="mb-1 block text-xs font-medium text-slate-300">
                         Meal Type
                       </label>
@@ -1199,7 +1200,7 @@ export function QuickLogModal({
                   </div>
 
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                    <div>
+                    <div className="min-w-0">
                       <label className="mb-1 block text-xs font-medium text-slate-300">
                         Calories
                       </label>
@@ -1215,7 +1216,7 @@ export function QuickLogModal({
                         className={`${inputClasses} tabular-nums`}
                       />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <label className="mb-1 block text-xs font-medium text-[#2EE6A6]">
                         Protein (g)
                       </label>
@@ -1231,7 +1232,7 @@ export function QuickLogModal({
                         className={`${inputClasses} tabular-nums`}
                       />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <label className="mb-1 block text-xs font-medium text-[#38BDF8]">
                         Carbs (g)
                       </label>
@@ -1247,7 +1248,7 @@ export function QuickLogModal({
                         className={`${inputClasses} tabular-nums`}
                       />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <label className="mb-1 block text-xs font-medium text-[#FBBF24]">
                         Fat (g)
                       </label>
@@ -1267,7 +1268,7 @@ export function QuickLogModal({
                 </>
               ) : (
                 <>
-                  <div>
+                  <div className="min-w-0">
                     <label className="mb-1 block text-xs font-medium text-slate-300">
                       Activity Name
                     </label>
@@ -1284,7 +1285,7 @@ export function QuickLogModal({
                   </div>
 
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                    <div className="col-span-2 sm:col-span-1">
+                    <div className="col-span-2 min-w-0 sm:col-span-1">
                       <label className="mb-1 block text-xs font-medium text-slate-300">
                         Category
                       </label>
@@ -1306,7 +1307,7 @@ export function QuickLogModal({
                       </select>
                     </div>
 
-                    <div>
+                    <div className="min-w-0">
                       <label className="mb-1 block text-xs font-medium text-slate-300">
                         Duration (min)
                       </label>
@@ -1325,7 +1326,7 @@ export function QuickLogModal({
                       />
                     </div>
 
-                    <div>
+                    <div className="min-w-0">
                       <label className="mb-1 block text-xs font-medium text-[#FFB020]">
                         Burn (kcal)
                       </label>
@@ -1344,7 +1345,7 @@ export function QuickLogModal({
                       />
                     </div>
 
-                    <div className="col-span-2 sm:col-span-1">
+                    <div className="col-span-2 min-w-0 sm:col-span-1">
                       <label className="mb-1 block text-xs font-medium text-slate-300">
                         Intensity
                       </label>

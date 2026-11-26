@@ -33,7 +33,7 @@ export function BentoCard({
 
   return (
     <section
-      className={`relative overflow-hidden rounded-3xl border border-white/5 bg-[#141720] p-5 sm:p-6 shadow-[0_24px_48px_-24px_rgba(0,0,0,0.9)] ${className}`}
+      className={`relative overflow-hidden rounded-3xl border border-white/5 bg-[#141720] p-4 sm:p-6 shadow-[0_24px_48px_-24px_rgba(0,0,0,0.9)] ${className}`}
     >
       {/* Subtle Apple-native top surface highlight */}
       <div
@@ -45,31 +45,35 @@ export function BentoCard({
         className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${GLOW_CLASSES[accentGlow]}`}
       />
 
-      <div className={`relative z-10 flex h-full flex-col ${bodyClassName}`}>
+      <div className={`relative z-10 flex h-full min-w-0 flex-col ${bodyClassName}`}>
         {hasHeader && (
-          <header className="mb-4 flex items-start justify-between gap-3">
-            <div className="flex items-center gap-2.5 min-w-0">
+          <header className="mb-4 flex flex-wrap items-start justify-between gap-x-3 gap-y-2.5">
+            <div className="flex min-w-0 flex-1 basis-[170px] items-center gap-2.5 sm:basis-0">
               {icon && (
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] text-slate-200">
                   {icon}
                 </div>
               )}
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 {title && (
-                  <h2 className="truncate text-[15px] font-semibold tracking-tight text-white">
+                  <h2 className="line-clamp-2 text-[15px] font-semibold leading-snug tracking-tight text-white sm:truncate">
                     {title}
                   </h2>
                 )}
                 {subtitle && (
-                  <p className="truncate text-xs text-slate-400">{subtitle}</p>
+                  <p className="line-clamp-2 text-xs text-slate-400 sm:truncate">{subtitle}</p>
                 )}
               </div>
             </div>
-            {headerRight && <div className="shrink-0">{headerRight}</div>}
+            {headerRight && (
+              <div className="min-w-0 max-w-full shrink-0 has-[.w-full]:w-full sm:has-[.w-full]:w-auto">
+                {headerRight}
+              </div>
+            )}
           </header>
         )}
 
-        <div className="flex-1">{children}</div>
+        <div className="min-w-0 flex-1">{children}</div>
       </div>
     </section>
   );

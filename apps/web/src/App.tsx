@@ -147,27 +147,27 @@ function WeighInModal({
         }
       }}
     >
-      <div className="animate-sheet-up relative max-h-[90dvh] w-full overflow-y-auto rounded-t-3xl rounded-b-none border-t border-x border-white/10 bg-[#141720]/98 px-5 pt-3 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-[0_-24px_64px_-12px_rgba(0,0,0,0.95)] backdrop-blur-2xl sm:max-w-md sm:rounded-3xl sm:border sm:p-6 sm:shadow-2xl">
+      <div className="animate-sheet-up relative max-h-[90dvh] w-full overflow-x-hidden overflow-y-auto rounded-t-3xl rounded-b-none border-t border-x border-white/10 bg-[#141720]/98 px-4 pt-3 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-[0_-24px_64px_-12px_rgba(0,0,0,0.95)] backdrop-blur-2xl sm:max-w-md sm:rounded-3xl sm:border sm:p-6 sm:shadow-2xl">
         {/* iOS-style drag handle */}
         <div
           aria-hidden="true"
           className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-white/20 sm:hidden"
         />
 
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-[#38BDF8]/15 text-[#38BDF8]">
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-[#38BDF8]/15 text-[#38BDF8]">
               <Scale className="h-4 w-4" />
             </div>
-            <div>
-              <h3 className="text-base font-semibold text-white">Log Body Composition</h3>
-              <p className="text-xs text-slate-400">Updates BMR &amp; 7-day moving average</p>
+            <div className="min-w-0">
+              <h3 className="truncate text-base font-semibold text-white">Log Body Composition</h3>
+              <p className="truncate text-xs text-slate-400">Updates BMR &amp; 7-day moving average</p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full text-slate-400 transition hover:bg-white/10 hover:text-white"
+            className="flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-white/10 hover:text-white"
             aria-label="Close modal"
           >
             <X className="h-4 w-4" />
@@ -175,9 +175,11 @@ function WeighInModal({
         </div>
 
         <form onSubmit={handleSubmit} className="mt-5 space-y-4">
-          <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
-            <label className="block">
-              <span className="text-xs font-medium text-slate-300">Weight (kg) *</span>
+          <div className="grid grid-cols-3 gap-2 sm:gap-3">
+            <label className="block min-w-0">
+              <span className="block truncate text-[11px] font-medium text-slate-300 sm:text-xs">
+                Weight (kg)*
+              </span>
               <input
                 type="number"
                 inputMode="decimal"
@@ -185,11 +187,13 @@ function WeighInModal({
                 required
                 value={weightKg}
                 onChange={(e) => setWeightKg(e.target.value)}
-                className="mt-1.5 min-h-[44px] w-full rounded-xl border border-white/10 bg-[#0A0C10] px-3 py-2 text-base tabular-nums text-white outline-none focus:border-[#38BDF8] sm:text-sm"
+                className="mt-1.5 min-h-[44px] w-full min-w-0 max-w-full rounded-xl border border-white/10 bg-[#0A0C10] px-2.5 py-2 text-base tabular-nums text-white outline-none focus:border-[#38BDF8] sm:px-3 sm:text-sm"
               />
             </label>
-            <label className="block">
-              <span className="text-xs font-medium text-slate-300">Body Fat (%)</span>
+            <label className="block min-w-0">
+              <span className="block truncate text-[11px] font-medium text-slate-300 sm:text-xs">
+                Body Fat %
+              </span>
               <input
                 type="number"
                 inputMode="decimal"
@@ -197,11 +201,13 @@ function WeighInModal({
                 value={bodyFatPct}
                 onChange={(e) => setBodyFatPct(e.target.value)}
                 placeholder="16.5"
-                className="mt-1.5 min-h-[44px] w-full rounded-xl border border-white/10 bg-[#0A0C10] px-3 py-2 text-base tabular-nums text-white outline-none focus:border-[#FFB020] sm:text-sm"
+                className="mt-1.5 min-h-[44px] w-full min-w-0 max-w-full rounded-xl border border-white/10 bg-[#0A0C10] px-2.5 py-2 text-base tabular-nums text-white outline-none focus:border-[#FFB020] sm:px-3 sm:text-sm"
               />
             </label>
-            <label className="block">
-              <span className="text-xs font-medium text-slate-300">Muscle (kg)</span>
+            <label className="block min-w-0">
+              <span className="block truncate text-[11px] font-medium text-slate-300 sm:text-xs">
+                Muscle (kg)
+              </span>
               <input
                 type="number"
                 inputMode="decimal"
@@ -209,12 +215,12 @@ function WeighInModal({
                 value={muscleKg}
                 onChange={(e) => setMuscleKg(e.target.value)}
                 placeholder="35.6"
-                className="mt-1.5 min-h-[44px] w-full rounded-xl border border-white/10 bg-[#0A0C10] px-3 py-2 text-base tabular-nums text-white outline-none focus:border-[#2EE6A6] sm:text-sm"
+                className="mt-1.5 min-h-[44px] w-full min-w-0 max-w-full rounded-xl border border-white/10 bg-[#0A0C10] px-2.5 py-2 text-base tabular-nums text-white outline-none focus:border-[#2EE6A6] sm:px-3 sm:text-sm"
               />
             </label>
           </div>
 
-          <label className="block">
+          <label className="block min-w-0">
             <span className="text-xs font-medium text-slate-300">Notes</span>
             <input
               type="text"
@@ -222,7 +228,7 @@ function WeighInModal({
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Morning fasted check-in"
-              className="mt-1.5 min-h-[44px] w-full rounded-xl border border-white/10 bg-[#0A0C10] px-3 py-2 text-base text-white outline-none focus:border-white/30 sm:text-sm"
+              className="mt-1.5 min-h-[44px] w-full min-w-0 max-w-full rounded-xl border border-white/10 bg-[#0A0C10] px-3 py-2 text-base text-white outline-none focus:border-white/30 sm:text-sm"
             />
           </label>
 
@@ -329,7 +335,7 @@ export function App() {
 
   if (!dashboard && loading) {
     return (
-      <div className="min-h-screen bg-[#0A0C10] pb-24 pt-[env(safe-area-inset-top)] text-white md:pb-12">
+      <div className="min-h-screen overflow-x-clip bg-[#0A0C10] pb-[calc(6.5rem+env(safe-area-inset-bottom))] pt-[env(safe-area-inset-top)] text-white md:pb-12">
         <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6 sm:py-8 lg:px-8">
           <div className="flex items-center justify-between pb-6">
             <div className="h-8 w-44 animate-pulse rounded-xl bg-white/10" />
@@ -376,24 +382,24 @@ export function App() {
         };
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-[#0A0C10] pb-24 pt-[env(safe-area-inset-top)] text-white md:pb-12">
+    <div className="min-h-screen overflow-x-clip bg-[#0A0C10] pb-[calc(6.5rem+env(safe-area-inset-bottom))] pt-[env(safe-area-inset-top)] text-white md:pb-12">
       {/* Ambient top glow */}
       <div className="pointer-events-none fixed inset-x-0 top-0 h-80 bg-[radial-gradient(ellipse_at_top,rgba(46,230,166,0.07),transparent_65%)]" />
 
       <div className="relative mx-auto max-w-7xl px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
         {/* Top Header */}
-        <header className="mb-4 flex flex-col gap-3 sm:mb-6 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
+        <header className="mb-4 flex min-w-0 flex-col gap-3 sm:mb-6 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <div className="flex min-w-0 items-center justify-between gap-2 sm:gap-3">
+            <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-[#2EE6A6]/30 bg-gradient-to-br from-[#2EE6A6]/20 to-[#38BDF8]/15 shadow-[0_0_24px_rgba(46,230,166,0.18)]">
                 <Activity className="h-5 w-5 text-[#2EE6A6]" />
               </div>
-              <div>
-                <div className="flex items-center gap-2">
+              <div className="min-w-0">
+                <div className="flex min-w-0 flex-wrap items-center gap-1.5 sm:gap-2">
                   <h1 className="text-lg font-bold tracking-tight text-white sm:text-xl">
                     VitalPulse
                   </h1>
-                  <span className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                  <span className="shrink-0 rounded-full border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-slate-400 sm:px-2 sm:text-[10px]">
                     Biometric OS
                   </span>
                 </div>
@@ -405,18 +411,18 @@ export function App() {
 
             {/* Compact Live Dot on Mobile Header */}
             <div
-              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium sm:hidden ${storageStatus.pillClass}`}
+              className={`inline-flex max-w-full shrink-0 items-center gap-1.5 rounded-full border px-2 py-1 text-[10px] font-medium sm:hidden ${storageStatus.pillClass}`}
             >
-              <span className={`h-1.5 w-1.5 rounded-full ${storageStatus.dotClass}`} />
-              <span>{storageStatus.label}</span>
+              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${storageStatus.dotClass}`} />
+              <span className="truncate">{storageStatus.label}</span>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5 sm:gap-2">
             {/* Formatted Date Pill */}
-            <div className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-[#141720] px-3 py-1.5 text-xs font-medium text-slate-300">
-              <Calendar className="h-3.5 w-3.5 text-slate-400" />
-              <span>{formatDisplayDate(dashboard.date)}</span>
+            <div className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-white/10 bg-[#141720] px-2.5 py-1.5 text-[11px] font-medium text-slate-300 sm:px-3 sm:text-xs">
+              <Calendar className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+              <span className="truncate">{formatDisplayDate(dashboard.date)}</span>
             </div>
 
             {/* Active Goal Badge (clickable to open Profile & Goal Settings) */}
@@ -424,16 +430,16 @@ export function App() {
               type="button"
               onClick={() => setProfileSettingsOpen(true)}
               title="Edit Profile & Goal Settings"
-              className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition hover:brightness-110 active:scale-[0.98] ${goalBadge.className}`}
+              className={`inline-flex max-w-full cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[11px] font-semibold transition hover:brightness-110 active:scale-[0.98] sm:px-3 sm:text-xs ${goalBadge.className}`}
             >
-              <Target className="h-3.5 w-3.5" />
-              <span>
+              <Target className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">
                 {goalBadge.label} · {calAdjText} kcal
               </span>
             </button>
 
             {/* Apple Health Sync Pill (Mobile + Desktop) */}
-            <AppleHealthSyncPill syncStatus={syncStatus} onClick={handleSyncPillClick} />
+            <AppleHealthSyncPill syncStatus={syncStatus} onClick={handleSyncPillClick} className="max-w-full" />
 
             {/* Desktop Settings Button */}
             <button
@@ -489,15 +495,15 @@ export function App() {
 
         {/* Non-blocking Error Banner */}
         {error ? (
-          <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-[#FF5C6C]/30 bg-[#FF5C6C]/10 px-4 py-3 text-xs text-[#FF8A95] sm:mb-5">
-            <div className="flex items-center gap-2">
+          <div className="mb-4 flex min-w-0 items-center justify-between gap-3 rounded-2xl border border-[#FF5C6C]/30 bg-[#FF5C6C]/10 px-4 py-3 text-xs text-[#FF8A95] sm:mb-5">
+            <div className="flex min-w-0 items-center gap-2">
               <AlertCircle className="h-4 w-4 shrink-0 text-[#FF5C6C]" />
-              <span>{error}</span>
+              <span className="min-w-0 break-words">{error}</span>
             </div>
             <button
               type="button"
               onClick={clearError}
-              className="flex min-h-[36px] min-w-[36px] items-center justify-center rounded-lg p-1 text-[#FF8A95] transition hover:bg-white/10 hover:text-white"
+              className="flex min-h-[36px] min-w-[36px] shrink-0 items-center justify-center rounded-lg p-1 text-[#FF8A95] transition hover:bg-white/10 hover:text-white"
               aria-label="Dismiss error"
             >
               <X className="h-3.5 w-3.5" />
@@ -506,7 +512,7 @@ export function App() {
         ) : null}
 
         {/* Full-Width Hero Readiness Card (Always at top on mobile Dashboard & Tablet/Desktop) */}
-        <div className={`mb-4 sm:mb-5 ${mobileTab === 'dashboard' ? 'block' : 'hidden md:block'}`}>
+        <div className={`mb-4 min-w-0 sm:mb-5 ${mobileTab === 'dashboard' ? 'block' : 'hidden md:block'}`}>
           <HeroStatusCard
             readiness={dashboard.readiness}
             energy={dashboard.energy}
@@ -622,8 +628,8 @@ export function App() {
           {mobileTab === 'trends' ? (
             <div className="min-w-0 md:hidden">
               <div className="rounded-3xl border border-white/5 bg-[#141720] p-4 shadow-[0_20px_50px_rgba(0,0,0,0.45)]">
-                <div className="flex items-center justify-between">
-                  <div>
+                <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0">
                     <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">
                       Latest Body Snapshot
                     </div>
@@ -639,7 +645,7 @@ export function App() {
                   <button
                     type="button"
                     onClick={() => setWeighInOpen(true)}
-                    className="inline-flex min-h-[44px] items-center gap-1.5 rounded-2xl bg-[#2EE6A6] px-4 py-2 text-xs font-bold text-[#081016] transition hover:brightness-110 active:scale-95"
+                    className="inline-flex min-h-[44px] shrink-0 items-center gap-1.5 rounded-2xl bg-[#2EE6A6] px-4 py-2 text-xs font-bold text-[#081016] transition hover:brightness-110 active:scale-95"
                   >
                     <Scale className="h-4 w-4" />
                     Weigh-In
@@ -768,7 +774,7 @@ export function App() {
             }
           }}
         >
-          <div className="animate-sheet-up relative max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl sm:max-w-2xl sm:rounded-3xl">
+          <div className="animate-sheet-up relative max-h-[92dvh] w-full overflow-x-hidden overflow-y-auto rounded-t-3xl sm:max-w-2xl sm:rounded-3xl">
             <AppleShortcutsCard
               syncStatus={syncStatus}
               webhookKeyStatus={me?.webhookKey}

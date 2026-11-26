@@ -468,7 +468,7 @@ export function ProfileSettingsModal({
   };
 
   const inputClasses =
-    'min-h-[44px] w-full rounded-xl border border-white/10 bg-[#0A0C10]/85 px-3 py-2 text-base sm:text-sm text-white placeholder:text-slate-500 focus:border-[#2EE6A6]/60 focus:outline-none focus:ring-1 focus:ring-[#2EE6A6]/40';
+    'min-h-[44px] w-full min-w-0 max-w-full rounded-xl border border-white/10 bg-[#0A0C10]/85 px-3 py-2 text-base sm:text-sm text-white placeholder:text-slate-500 focus:border-[#2EE6A6]/60 focus:outline-none focus:ring-1 focus:ring-[#2EE6A6]/40';
 
   return (
     <div
@@ -482,7 +482,7 @@ export function ProfileSettingsModal({
         }
       }}
     >
-      <div className="animate-sheet-up relative max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl rounded-b-none border-t border-x border-white/10 bg-[#141720]/98 px-5 pt-3 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-[0_-24px_64px_-12px_rgba(0,0,0,0.95)] backdrop-blur-2xl sm:max-w-2xl sm:rounded-3xl sm:border sm:p-6 sm:shadow-[0_32px_80px_-16px_rgba(0,0,0,0.95)]">
+      <div className="animate-sheet-up relative max-h-[92dvh] w-full overflow-x-hidden overflow-y-auto rounded-t-3xl rounded-b-none border-t border-x border-white/10 bg-[#141720]/98 px-4 pt-3 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-[0_-24px_64px_-12px_rgba(0,0,0,0.95)] backdrop-blur-2xl sm:max-w-2xl sm:rounded-3xl sm:border sm:p-6 sm:shadow-[0_32px_80px_-16px_rgba(0,0,0,0.95)]">
         <div
           aria-hidden="true"
           className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/25 to-transparent"
@@ -494,11 +494,11 @@ export function ProfileSettingsModal({
 
         {/* Header */}
         <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
+          <div className="flex min-w-0 flex-1 items-center gap-2.5">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-[#38BDF8]/15 text-[#38BDF8]">
               <SlidersHorizontal className="h-4 w-4" />
             </div>
-            <div>
+            <div className="min-w-0">
               <h2 id="profile-settings-title" className="text-base font-semibold text-white">
                 Profile &amp; Goal Settings
               </h2>
@@ -513,22 +513,22 @@ export function ProfileSettingsModal({
             onClick={onClose}
             disabled={busy}
             aria-label="Close profile settings"
-            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-slate-400 transition hover:bg-white/10 hover:text-white disabled:opacity-50"
+            className="flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-slate-400 transition hover:bg-white/10 hover:text-white disabled:opacity-50"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="mt-4 space-y-5">
+        <form onSubmit={handleSubmit} className="mt-4 min-w-0 space-y-5">
           {/* Section 1: Identity & Biometrics */}
-          <div className="space-y-3 rounded-2xl border border-white/5 bg-[#0F131C]/75 p-4">
+          <div className="min-w-0 space-y-3 rounded-2xl border border-white/5 bg-[#0F131C]/75 p-3.5 sm:p-4">
             <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400">
-              <User className="h-3.5 w-3.5 text-[#2EE6A6]" />
+              <User className="h-3.5 w-3.5 shrink-0 text-[#2EE6A6]" />
               <span>Biometrics &amp; Baseline Activity</span>
             </div>
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <label className="block">
+              <label className="block min-w-0">
                 <span className="text-xs font-medium text-slate-300">Display Name *</span>
                 <input
                   type="text"
@@ -540,7 +540,7 @@ export function ProfileSettingsModal({
                 />
               </label>
 
-              <div>
+              <div className="min-w-0">
                 <span className="text-xs font-medium text-slate-300">Gender *</span>
                 <div className="mt-1 grid grid-cols-3 gap-1.5">
                   {(['male', 'female', 'other'] as const).map((option) => (
@@ -548,7 +548,7 @@ export function ProfileSettingsModal({
                       key={option}
                       type="button"
                       onClick={() => setGender(option)}
-                      className={`min-h-[44px] cursor-pointer rounded-xl border px-2 text-xs font-semibold capitalize transition ${
+                      className={`min-h-[44px] min-w-0 cursor-pointer rounded-xl border px-2 text-xs font-semibold capitalize transition ${
                         gender === option
                           ? 'border-[#2EE6A6]/60 bg-[#2EE6A6]/15 text-[#2EE6A6]'
                           : 'border-white/10 bg-[#0A0C10]/85 text-slate-300 hover:bg-white/[0.04]'
@@ -562,18 +562,18 @@ export function ProfileSettingsModal({
             </div>
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <label className="block">
+              <label className="block min-w-0">
                 <span className="text-xs font-medium text-slate-300">Birth Date *</span>
                 <input
                   type="date"
                   required
                   value={birthDate}
                   onChange={(e) => setBirthDate(e.target.value)}
-                  className={`mt-1 ${inputClasses}`}
+                  className={`mt-1 appearance-none ${inputClasses}`}
                 />
               </label>
 
-              <label className="block">
+              <label className="block min-w-0">
                 <span className="text-xs font-medium text-slate-300">Height (cm) *</span>
                 <input
                   type="number"
@@ -589,8 +589,8 @@ export function ProfileSettingsModal({
               </label>
             </div>
 
-            <div>
-              <div className="mb-1.5 flex items-center justify-between text-xs font-medium text-slate-300">
+            <div className="min-w-0">
+              <div className="mb-1.5 flex flex-wrap items-center justify-between gap-1 text-xs font-medium text-slate-300">
                 <span>Baseline Activity Multiplier (NEAT)</span>
                 <span className="tabular-nums text-[11px] text-slate-400">Range 1.10 – 2.20</span>
               </div>
@@ -602,7 +602,7 @@ export function ProfileSettingsModal({
                       key={preset.value}
                       type="button"
                       onClick={() => setActivityMultiplier(String(preset.value))}
-                      className={`min-h-[44px] rounded-xl border px-2.5 text-xs font-semibold transition ${
+                      className={`min-h-[44px] min-w-0 truncate rounded-xl border px-2 text-xs font-semibold transition sm:px-2.5 ${
                         active
                           ? 'border-[#2EE6A6]/60 bg-[#2EE6A6]/15 text-[#2EE6A6]'
                           : 'border-white/10 bg-[#0A0C10]/85 text-slate-300 hover:bg-white/[0.04]'
@@ -628,9 +628,9 @@ export function ProfileSettingsModal({
           </div>
 
           {/* Section 2: Goal & Macro Ratios */}
-          <div className="space-y-3 rounded-2xl border border-white/5 bg-[#0F131C]/75 p-4">
+          <div className="min-w-0 space-y-3 rounded-2xl border border-white/5 bg-[#0F131C]/75 p-3.5 sm:p-4">
             <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400">
-              <Target className="h-3.5 w-3.5 text-[#FFB020]" />
+              <Target className="h-3.5 w-3.5 shrink-0 text-[#FFB020]" />
               <span>Goal &amp; Macro Rules</span>
             </div>
 
@@ -642,7 +642,7 @@ export function ProfileSettingsModal({
                     key={opt.value}
                     type="button"
                     onClick={() => handleSelectGoalType(opt)}
-                    className={`min-h-[44px] cursor-pointer rounded-xl border px-3 py-2 text-xs font-bold transition ${
+                    className={`min-h-[44px] min-w-0 cursor-pointer rounded-xl border px-2 py-2 text-xs font-bold transition sm:px-3 ${
                       active
                         ? opt.activeClass
                         : 'border-white/10 bg-[#0A0C10]/85 text-slate-300 hover:bg-white/[0.04]'
@@ -654,7 +654,7 @@ export function ProfileSettingsModal({
               })}
             </div>
 
-            <div>
+            <div className="min-w-0">
               <span className="text-xs font-medium text-slate-300">
                 Calorie Adjustment (kcal/day)
               </span>
@@ -692,7 +692,7 @@ export function ProfileSettingsModal({
             </div>
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div>
+              <div className="min-w-0">
                 <span className="text-xs font-medium text-[#2EE6A6]">Protein Target (g/kg)</span>
                 <div className="mt-1.5 flex flex-wrap gap-1.5">
                   {PROTEIN_PRESETS.map((val) => {
@@ -726,10 +726,10 @@ export function ProfileSettingsModal({
                 />
               </div>
 
-              <div>
-                <div className="flex items-center justify-between text-xs font-medium text-[#FBBF24]">
+              <div className="min-w-0">
+                <div className="flex items-center justify-between gap-2 text-xs font-medium text-[#FBBF24]">
                   <span>Fat Ratio (% of Target kcal)</span>
-                  <span className="tabular-nums font-bold">{fatRatioPct}%</span>
+                  <span className="tabular-nums shrink-0 font-bold">{fatRatioPct}%</span>
                 </div>
                 <input
                   type="range"
@@ -740,7 +740,7 @@ export function ProfileSettingsModal({
                   onChange={(e) => setFatRatioPct(e.target.value)}
                   className="mt-3 h-2 w-full cursor-pointer accent-[#FBBF24]"
                 />
-                <div className="mt-2 flex items-center gap-2">
+                <div className="mt-2 flex min-w-0 items-center gap-2">
                   <input
                     type="number"
                     inputMode="numeric"
@@ -750,19 +750,21 @@ export function ProfileSettingsModal({
                     required
                     value={fatRatioPct}
                     onChange={(e) => setFatRatioPct(e.target.value)}
-                    className={`tabular-nums ${inputClasses}`}
+                    className={`min-w-0 flex-1 tabular-nums ${inputClasses}`}
                   />
-                  <span className="text-xs text-slate-400">% (15–50%)</span>
+                  <span className="shrink-0 whitespace-nowrap text-xs text-slate-400">
+                    % (15–50%)
+                  </span>
                 </div>
               </div>
             </div>
           </div>
 
           {/* Section 3: Calorie & Carb Cycling */}
-          <div className="space-y-3.5 rounded-2xl border border-white/5 bg-[#0F131C]/75 p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400">
-                <Repeat className="h-3.5 w-3.5 text-[#38BDF8]" />
+          <div className="min-w-0 space-y-3.5 rounded-2xl border border-white/5 bg-[#0F131C]/75 p-3.5 sm:p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                <Repeat className="h-3.5 w-3.5 shrink-0 text-[#38BDF8]" />
                 <span>Calorie &amp; Carb Cycling</span>
               </div>
 
@@ -772,7 +774,7 @@ export function ProfileSettingsModal({
                 aria-checked={cyclingEnabled}
                 aria-label="Enable Cycling"
                 onClick={() => setCyclingEnabled((prev) => !prev)}
-                className="inline-flex min-h-[44px] cursor-pointer items-center gap-2.5 rounded-xl px-2 text-xs font-semibold text-slate-200 transition hover:bg-white/[0.04]"
+                className="inline-flex min-h-[44px] shrink-0 cursor-pointer items-center gap-2.5 rounded-xl px-2 text-xs font-semibold text-slate-200 transition hover:bg-white/[0.04]"
               >
                 <span className={cyclingEnabled ? 'text-[#2EE6A6]' : 'text-slate-400'}>
                   Enable Cycling
@@ -796,9 +798,9 @@ export function ProfileSettingsModal({
             </div>
 
             {cyclingEnabled ? (
-              <div className="space-y-3.5">
+              <div className="min-w-0 space-y-3.5">
                 {/* Mode Selector */}
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
                   {(
                     [
                       { id: 'TRAINING_REST', label: 'Training / Rest' },
@@ -812,7 +814,7 @@ export function ProfileSettingsModal({
                         key={modeOpt.id}
                         type="button"
                         onClick={() => handleSelectCyclingMode(modeOpt.id)}
-                        className={`min-h-[44px] cursor-pointer rounded-xl border px-2 py-2 text-xs font-semibold transition ${
+                        className={`min-h-[44px] min-w-0 cursor-pointer rounded-xl border px-1.5 py-2 text-[11px] leading-tight font-semibold transition sm:px-2 sm:text-xs ${
                           active
                             ? 'border-[#38BDF8]/60 bg-[#38BDF8]/15 text-[#38BDF8]'
                             : 'border-white/10 bg-[#0A0C10]/85 text-slate-300 hover:bg-white/[0.04]'
@@ -826,15 +828,15 @@ export function ProfileSettingsModal({
 
                 {/* Mode 1: Training / Rest */}
                 {cyclingMode === 'TRAINING_REST' ? (
-                  <div className="space-y-3">
-                    <div>
-                      <div className="mb-1.5 flex items-center justify-between text-xs text-slate-300">
+                  <div className="min-w-0 space-y-3">
+                    <div className="min-w-0">
+                      <div className="mb-1.5 flex flex-wrap items-center justify-between gap-1 text-xs text-slate-300">
                         <span className="font-medium">Scheduled Training Days</span>
                         <span className="text-[11px] text-slate-400">
                           Auto-upgrades on logged workout days too
                         </span>
                       </div>
-                      <div className="grid grid-cols-7 gap-1.5">
+                      <div className="grid grid-cols-7 gap-1 sm:gap-1.5">
                         {WEEKDAYS.map(({ key, label }) => {
                           const isSelected = trainingDays.includes(key);
                           return (
@@ -843,7 +845,7 @@ export function ProfileSettingsModal({
                               type="button"
                               aria-pressed={isSelected}
                               onClick={() => handleToggleTrainingDay(key)}
-                              className={`min-h-[44px] cursor-pointer rounded-xl border text-xs font-semibold transition ${
+                              className={`min-h-[44px] min-w-0 cursor-pointer rounded-xl border px-0.5 text-[11px] font-semibold transition sm:text-xs ${
                                 isSelected
                                   ? 'border-[#2EE6A6]/60 bg-[#2EE6A6]/15 text-[#2EE6A6]'
                                   : 'border-white/10 bg-[#0A0C10]/85 text-slate-400 hover:bg-white/[0.04]'
@@ -857,7 +859,7 @@ export function ProfileSettingsModal({
                     </div>
 
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <label className="block">
+                      <label className="block min-w-0">
                         <span className="text-xs font-medium text-[#2EE6A6]">
                           Training Day Offset (kcal)
                         </span>
@@ -873,7 +875,7 @@ export function ProfileSettingsModal({
                         />
                       </label>
 
-                      <label className="block">
+                      <label className="block min-w-0">
                         <span className="text-xs font-medium text-[#FFB020]">
                           Rest Day Offset (kcal)
                         </span>
@@ -894,8 +896,8 @@ export function ProfileSettingsModal({
 
                 {/* Mode 2: Weekend Buffer */}
                 {cyclingMode === 'WEEKEND_BUFFER' ? (
-                  <div className="space-y-2.5">
-                    <div className="flex items-center justify-between text-xs text-slate-300">
+                  <div className="min-w-0 space-y-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-1 text-xs text-slate-300">
                       <span className="font-medium">Weekday Save / Weekend Buffer Presets</span>
                       <span className="text-[11px] text-[#2EE6A6]">Net ±0 kcal/week</span>
                     </div>
@@ -918,7 +920,7 @@ export function ProfileSettingsModal({
                                 ),
                               )
                             }
-                            className={`tabular-nums min-h-[44px] cursor-pointer rounded-xl border px-3 text-xs font-semibold transition ${
+                            className={`tabular-nums min-h-[44px] min-w-0 cursor-pointer rounded-xl border px-3 text-xs font-semibold transition ${
                               isActive
                                 ? 'border-[#2EE6A6]/60 bg-[#2EE6A6]/15 text-[#2EE6A6]'
                                 : 'border-white/10 bg-[#0A0C10]/85 text-slate-300 hover:bg-white/[0.04]'
@@ -937,14 +939,14 @@ export function ProfileSettingsModal({
 
                 {/* Mode 3: Custom 7-Day */}
                 {cyclingMode === 'CUSTOM' ? (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-xs text-slate-300">
+                  <div className="min-w-0 space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-1 text-xs text-slate-300">
                       <span className="font-medium">Custom 7-Day Offsets (kcal)</span>
                       <span className="text-[11px] text-slate-400">Range -800 to +800</span>
                     </div>
-                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-7">
+                    <div className="grid grid-cols-3 gap-2 sm:grid-cols-7">
                       {WEEKDAYS.map(({ key, label }) => (
-                        <label key={key} className="block">
+                        <label key={key} className="block min-w-0">
                           <span className="text-[11px] font-medium text-slate-400">{label}</span>
                           <input
                             type="number"
@@ -957,7 +959,7 @@ export function ProfileSettingsModal({
                             onChange={(e) =>
                               setDayOffsets((prev) => ({ ...prev, [key]: e.target.value }))
                             }
-                            className="mt-1 min-h-[44px] w-full rounded-xl border border-white/10 bg-[#0A0C10]/85 px-2 py-1.5 text-center text-base tabular-nums text-white focus:border-[#38BDF8]/60 focus:outline-none sm:text-sm"
+                            className="mt-1 min-h-[44px] w-full min-w-0 max-w-full rounded-xl border border-white/10 bg-[#0A0C10]/85 px-2 py-1.5 text-center text-base tabular-nums text-white focus:border-[#38BDF8]/60 focus:outline-none sm:text-sm"
                           />
                         </label>
                       ))}
@@ -966,7 +968,7 @@ export function ProfileSettingsModal({
                 ) : null}
 
                 {/* Live 7-Day Preview Strip */}
-                <div className="rounded-xl border border-white/10 bg-[#0A0C10]/80 p-3">
+                <div className="min-w-0 rounded-xl border border-white/10 bg-[#0A0C10]/80 p-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="text-xs font-semibold text-white">
                       Live 7-Day Target Preview
@@ -987,7 +989,7 @@ export function ProfileSettingsModal({
                     </span>
                   </div>
 
-                  <div className="mt-2.5 grid grid-cols-7 gap-1 sm:gap-1.5">
+                  <div className="no-scrollbar mt-2.5 flex gap-1.5 overflow-x-auto pb-1 snap-x snap-mandatory sm:grid sm:grid-cols-7 sm:overflow-visible sm:pb-0">
                     {cyclingPreview.days.map((day) => {
                       const offsetTone =
                         day.offset > 0
@@ -998,7 +1000,7 @@ export function ProfileSettingsModal({
                       return (
                         <div
                           key={day.key}
-                          className={`min-w-0 rounded-lg border px-1 py-1.5 text-center ${offsetTone}`}
+                          className={`min-w-[68px] shrink-0 snap-start rounded-lg border px-1.5 py-2 text-center sm:min-w-0 sm:shrink ${offsetTone}`}
                         >
                           <div className="text-[10px] font-semibold uppercase">{day.label}</div>
                           <div className="tabular-nums mt-0.5 truncate text-[11px] font-bold text-white">
@@ -1031,10 +1033,10 @@ export function ProfileSettingsModal({
 
           {/* Live Preview Card */}
           {preview ? (
-            <div className="rounded-2xl border border-[#2EE6A6]/25 bg-gradient-to-br from-[#2EE6A6]/10 via-[#141720] to-[#38BDF8]/10 p-4">
+            <div className="min-w-0 rounded-2xl border border-[#2EE6A6]/25 bg-gradient-to-br from-[#2EE6A6]/10 via-[#141720] to-[#38BDF8]/10 p-3.5 sm:p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5 text-xs font-semibold text-white">
-                  <Flame className="h-4 w-4 text-[#FFB020]" />
+                <div className="flex flex-wrap items-center gap-1.5 text-xs font-semibold text-white">
+                  <Flame className="h-4 w-4 shrink-0 text-[#FFB020]" />
                   <span>Live Target Preview</span>
                   <span className="rounded-full border border-white/10 bg-white/[0.06] px-2 py-0.5 text-[10px] font-medium text-slate-300">
                     {preview.formula}
@@ -1046,19 +1048,19 @@ export function ProfileSettingsModal({
               </div>
 
               <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-                <div className="rounded-xl border border-white/10 bg-[#0A0C10]/85 px-3 py-2.5">
+                <div className="min-w-0 rounded-xl border border-white/10 bg-[#0A0C10]/85 px-3 py-2.5">
                   <div className="text-[11px] text-slate-400">Target Calories</div>
                   <div className="tabular-nums mt-0.5 text-lg font-bold text-[#2EE6A6]">
                     {preview.targetCalories.toLocaleString()} kcal
                   </div>
                 </div>
-                <div className="rounded-xl border border-white/10 bg-[#0A0C10]/85 px-3 py-2.5">
+                <div className="min-w-0 rounded-xl border border-white/10 bg-[#0A0C10]/85 px-3 py-2.5">
                   <div className="text-[11px] text-slate-400">Dynamic TDEE</div>
                   <div className="tabular-nums mt-0.5 text-base font-bold text-white">
                     {preview.dynamicTdee.toLocaleString()} kcal
                   </div>
                 </div>
-                <div className="col-span-2 rounded-xl border border-white/10 bg-[#0A0C10]/85 px-3 py-2.5 sm:col-span-1">
+                <div className="col-span-2 min-w-0 rounded-xl border border-white/10 bg-[#0A0C10]/85 px-3 py-2.5 sm:col-span-1">
                   <div className="text-[11px] text-slate-400">Resting BMR</div>
                   <div className="tabular-nums mt-0.5 text-base font-bold text-slate-200">
                     {preview.bmr.toLocaleString()} kcal
@@ -1067,17 +1069,17 @@ export function ProfileSettingsModal({
               </div>
 
               <div className="mt-2.5 grid grid-cols-3 gap-2">
-                <div className="rounded-xl border border-[#2EE6A6]/25 bg-[#2EE6A6]/10 px-3 py-2 text-center">
+                <div className="min-w-0 rounded-xl border border-[#2EE6A6]/25 bg-[#2EE6A6]/10 px-2.5 py-2 text-center sm:px-3">
                   <div className="text-[10px] font-semibold uppercase text-[#2EE6A6]">Protein</div>
                   <div className="tabular-nums text-sm font-bold text-white">
                     {preview.proteinG}g
                   </div>
                 </div>
-                <div className="rounded-xl border border-[#38BDF8]/25 bg-[#38BDF8]/10 px-3 py-2 text-center">
+                <div className="min-w-0 rounded-xl border border-[#38BDF8]/25 bg-[#38BDF8]/10 px-2.5 py-2 text-center sm:px-3">
                   <div className="text-[10px] font-semibold uppercase text-[#38BDF8]">Carbs</div>
                   <div className="tabular-nums text-sm font-bold text-white">{preview.carbsG}g</div>
                 </div>
-                <div className="rounded-xl border border-[#FBBF24]/25 bg-[#FBBF24]/10 px-3 py-2 text-center">
+                <div className="min-w-0 rounded-xl border border-[#FBBF24]/25 bg-[#FBBF24]/10 px-2.5 py-2 text-center sm:px-3">
                   <div className="text-[10px] font-semibold uppercase text-[#FBBF24]">Fat</div>
                   <div className="tabular-nums text-sm font-bold text-white">{preview.fatG}g</div>
                 </div>
@@ -1091,7 +1093,7 @@ export function ProfileSettingsModal({
               className="flex items-start gap-2 rounded-2xl border border-[#FF5C6C]/35 bg-[#FF5C6C]/12 px-3.5 py-2.5 text-xs font-medium text-[#FF8A95]"
             >
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-[#FF5C6C]" />
-              <span>{error}</span>
+              <span className="min-w-0 flex-1 break-words">{error}</span>
             </div>
           ) : null}
 

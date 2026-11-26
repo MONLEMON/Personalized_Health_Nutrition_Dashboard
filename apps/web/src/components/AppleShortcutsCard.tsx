@@ -253,16 +253,16 @@ export function AppleShortcutsCard({
   const isSynced = syncStatus.status === 'SUCCESS' && syncStatus.last_synced_at !== null;
 
   return (
-    <div id={id} className="scroll-mt-4">
+    <div id={id} className="min-w-0 scroll-mt-4">
       <BentoCard
         title="Apple Shortcuts Integration"
         subtitle="Personal per-user iOS Health webhook"
         icon={<Smartphone className="h-4 w-4 text-[#2EE6A6]" />}
         accentGlow="mint"
         headerRight={
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             <span
-              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium ${
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium ${
                 isSynced
                   ? 'border-[#2EE6A6]/25 bg-[#2EE6A6]/10 text-[#2EE6A6]'
                   : 'border-white/10 bg-white/[0.04] text-slate-400'
@@ -282,7 +282,7 @@ export function AppleShortcutsCard({
                 type="button"
                 onClick={onClose}
                 aria-label="Close Shortcuts Integration modal"
-                className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full text-slate-400 transition hover:bg-white/10 hover:text-white"
+                className="flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-white/10 hover:text-white"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -290,9 +290,9 @@ export function AppleShortcutsCard({
           </div>
         }
       >
-        <div className="space-y-4">
+        <div className="min-w-0 space-y-4">
           {/* Current Sync Status Summary */}
-          <div className="rounded-2xl border border-white/5 bg-[#0F131C]/80 p-3.5">
+          <div className="min-w-0 rounded-2xl border border-white/5 bg-[#0F131C]/80 p-3.5">
             <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
               <span className="font-medium text-slate-400">Last synced</span>
               <span className="tabular-nums font-semibold text-white">
@@ -307,7 +307,7 @@ export function AppleShortcutsCard({
                 {syncStatus.synced_fields.map((field) => (
                   <span
                     key={field}
-                    className="rounded-full border border-[#2EE6A6]/20 bg-[#2EE6A6]/10 px-2 py-0.5 font-mono text-[11px] text-[#2EE6A6]"
+                    className="max-w-full break-all rounded-full border border-[#2EE6A6]/20 bg-[#2EE6A6]/10 px-2 py-0.5 font-mono text-[11px] text-[#2EE6A6]"
                   >
                     {field}
                   </span>
@@ -321,14 +321,14 @@ export function AppleShortcutsCard({
           </div>
 
           {/* Personal Per-User Webhook Key Manager */}
-          <div className="space-y-2.5 rounded-2xl border border-white/5 bg-[#0F131C]/80 p-3.5">
+          <div className="min-w-0 space-y-2.5 rounded-2xl border border-white/5 bg-[#0F131C]/80 p-3.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2 text-xs font-medium text-slate-300">
-                <ShieldCheck className="h-4 w-4 text-[#2EE6A6]" />
+                <ShieldCheck className="h-4 w-4 shrink-0 text-[#2EE6A6]" />
                 <span>Personal API Key</span>
               </div>
               <span
-                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 font-mono text-[11px] ${
+                className={`inline-flex max-w-full items-center gap-1.5 truncate rounded-full border px-2.5 py-0.5 font-mono text-[11px] ${
                   savedKeyConfigured
                     ? 'border-[#2EE6A6]/25 bg-[#2EE6A6]/10 text-[#2EE6A6]'
                     : 'border-white/10 bg-white/[0.04] text-slate-400'
@@ -368,20 +368,22 @@ export function AppleShortcutsCard({
                 className="flex items-start gap-2 rounded-xl border border-[#FF5C6C]/30 bg-[#FF5C6C]/12 px-3 py-2 text-xs text-[#FF8A95]"
               >
                 <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#FF5C6C]" />
-                <span>{keyError}</span>
+                <span className="min-w-0 flex-1 break-words">{keyError}</span>
               </div>
             ) : null}
 
             {generatedKey ? (
-              <div className="space-y-2.5 rounded-2xl border border-[#2EE6A6]/40 bg-[#2EE6A6]/10 p-3.5">
+              <div className="min-w-0 space-y-2.5 rounded-2xl border border-[#2EE6A6]/40 bg-[#2EE6A6]/10 p-3.5">
                 <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-1.5 text-xs font-semibold text-[#2EE6A6]">
+                  <div className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-[#2EE6A6]">
                     <CheckCircle2 className="h-4 w-4 shrink-0" />
-                    <span>Displayed once only — copy this into Apple Shortcuts</span>
+                    <span className="min-w-0 break-words">
+                      Displayed once only — copy this into Apple Shortcuts
+                    </span>
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+                <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-stretch">
                   <div className="flex min-w-0 flex-1 items-center rounded-xl border border-[#2EE6A6]/30 bg-[#0A0C10] px-3 py-2">
                     <code className="break-all font-mono text-xs text-white">
                       {generatedKey.api_key}
@@ -410,12 +412,12 @@ export function AppleShortcutsCard({
           </div>
 
           {/* 1. Webhook URL */}
-          <div className="space-y-1.5">
+          <div className="min-w-0 space-y-1.5">
             <div className="flex items-center gap-1.5 text-xs font-medium text-slate-300">
-              <Link2 className="h-3.5 w-3.5 text-[#38BDF8]" />
+              <Link2 className="h-3.5 w-3.5 shrink-0 text-[#38BDF8]" />
               <span>Webhook URL</span>
             </div>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+            <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-stretch">
               <div className="flex min-w-0 flex-1 items-center rounded-xl border border-white/10 bg-[#0A0C10] px-3 py-2.5">
                 <code className="break-all font-mono text-xs text-slate-200">
                   <span className="mr-1.5 font-semibold text-[#2EE6A6]">POST</span>
@@ -443,17 +445,17 @@ export function AppleShortcutsCard({
           </div>
 
           {/* 2. Header (X-API-Key) */}
-          <div className="space-y-2">
+          <div className="min-w-0 space-y-2">
             <label
               htmlFor={apiKeyInputId}
               className="flex items-center gap-1.5 text-xs font-medium text-slate-300"
             >
-              <KeyRound className="h-3.5 w-3.5 text-[#FFB020]" />
+              <KeyRound className="h-3.5 w-3.5 shrink-0 text-[#FFB020]" />
               <span>Header (X-API-Key)</span>
             </label>
 
-            <div className="flex items-center gap-2">
-              <div className="relative flex-1">
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="relative min-w-0 flex-1">
                 <input
                   id={apiKeyInputId}
                   type={showApiKey ? 'text' : 'password'}
@@ -462,7 +464,7 @@ export function AppleShortcutsCard({
                   placeholder="Paste your hk_live_... personal webhook key"
                   autoComplete="off"
                   spellCheck={false}
-                  className="min-h-[44px] w-full rounded-xl border border-white/10 bg-[#0A0C10] py-2 pr-11 pl-3 font-mono text-base text-white outline-none transition placeholder:font-sans placeholder:text-slate-500 focus:border-[#2EE6A6] sm:text-sm"
+                  className="min-h-[44px] w-full min-w-0 max-w-full rounded-xl border border-white/10 bg-[#0A0C10] py-2 pr-11 pl-3 font-mono text-base text-white outline-none transition placeholder:font-sans placeholder:text-slate-500 focus:border-[#2EE6A6] sm:text-sm"
                 />
                 <button
                   type="button"
@@ -479,7 +481,7 @@ export function AppleShortcutsCard({
               </div>
             </div>
 
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+            <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-stretch">
               <div className="flex min-w-0 flex-1 items-center rounded-xl border border-white/10 bg-[#0A0C10] px-3 py-2.5">
                 <code className="break-all font-mono text-xs text-slate-300">
                   {headerSnippetPreview}
@@ -506,15 +508,15 @@ export function AppleShortcutsCard({
           </div>
 
           {/* 3. Sample JSON Payload */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0 space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-xs font-medium text-slate-300">
                 Sample JSON Payload
               </span>
               <button
                 type="button"
                 onClick={() => void handleCopy('json', sampleJsonString)}
-                className="inline-flex min-h-[44px] cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] px-3.5 py-2 text-xs font-semibold text-slate-200 transition hover:bg-white/10 active:scale-[0.98]"
+                className="inline-flex min-h-[44px] shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] px-3.5 py-2 text-xs font-semibold text-slate-200 transition hover:bg-white/10 active:scale-[0.98]"
               >
                 {copiedTarget === 'json' ? (
                   <>
@@ -530,7 +532,7 @@ export function AppleShortcutsCard({
               </button>
             </div>
 
-            <pre className="overflow-x-auto rounded-2xl border border-white/10 bg-[#0A0C10] p-3.5 font-mono text-xs leading-relaxed text-slate-200">
+            <pre className="max-w-full overflow-x-auto rounded-2xl border border-white/10 bg-[#0A0C10] p-3.5 font-mono text-xs leading-relaxed text-slate-200">
               {sampleJsonString}
             </pre>
 
@@ -558,7 +560,9 @@ export function AppleShortcutsCard({
               ) : (
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-[#FF5C6C]" />
               )}
-              <span className="leading-relaxed font-medium">{syncFeedback.message}</span>
+              <span className="min-w-0 flex-1 break-words leading-relaxed font-medium">
+                {syncFeedback.message}
+              </span>
             </div>
           ) : null}
 

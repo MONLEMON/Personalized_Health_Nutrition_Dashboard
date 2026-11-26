@@ -257,23 +257,23 @@ export function OnboardingWizard() {
   const progressPct = step === 1 ? '33%' : step === 2 ? '67%' : '100%';
 
   return (
-    <div className="relative min-h-screen bg-[#0A0C10] px-4 py-6 pt-[calc(1.5rem+env(safe-area-inset-top))] pb-[calc(2rem+env(safe-area-inset-bottom))] text-white sm:px-6 sm:py-10">
+    <div className="relative min-h-screen overflow-x-clip bg-[#0A0C10] px-4 py-6 pt-[calc(1.5rem+env(safe-area-inset-top))] pb-[calc(2rem+env(safe-area-inset-bottom))] text-white sm:px-6 sm:py-10">
       <div
         aria-hidden="true"
         className="pointer-events-none fixed inset-x-0 top-0 h-80 bg-[radial-gradient(ellipse_at_top,rgba(46,230,166,0.12),transparent_65%)]"
       />
 
-      <div className="relative z-10 mx-auto max-w-xl">
+      <div className="relative z-10 mx-auto w-full min-w-0 max-w-xl">
         {/* Top Bar with Account Switch / Sign Out */}
         <header className="mb-6 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-[#2EE6A6]/30 bg-gradient-to-br from-[#2EE6A6]/20 to-[#38BDF8]/15">
               <Activity className="h-5 w-5 text-[#2EE6A6]" />
             </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="text-base font-bold tracking-tight text-white">VitalPulse</span>
-                <span className="rounded-full border border-[#2EE6A6]/25 bg-[#2EE6A6]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[#2EE6A6]">
+                <span className="shrink-0 rounded-full border border-[#2EE6A6]/25 bg-[#2EE6A6]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[#2EE6A6]">
                   Setup
                 </span>
               </div>
@@ -294,7 +294,7 @@ export function OnboardingWizard() {
         </header>
 
         {/* Main Card */}
-        <section className="relative overflow-hidden rounded-3xl border border-white/5 bg-[#141720] p-5 shadow-[0_24px_64px_-16px_rgba(0,0,0,0.95)] sm:p-7">
+        <section className="relative min-w-0 overflow-hidden rounded-3xl border border-white/5 bg-[#141720] p-5 shadow-[0_24px_64px_-16px_rgba(0,0,0,0.95)] sm:p-7">
           <div
             aria-hidden="true"
             className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/15 to-transparent"
@@ -302,7 +302,7 @@ export function OnboardingWizard() {
 
           {/* Step Indicator */}
           <div className="mb-6 space-y-3">
-            <div className="flex items-center justify-between text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
               <span className="font-semibold uppercase tracking-wider text-[#2EE6A6]">
                 Step {step} of 3
               </span>
@@ -322,14 +322,14 @@ export function OnboardingWizard() {
             </div>
           </div>
 
-          <form onSubmit={(e) => void handleSubmit(e)} className="space-y-5">
+          <form onSubmit={(e) => void handleSubmit(e)} className="min-w-0 space-y-5">
             {step === 1 ? (
-              <div className="space-y-4">
+              <div className="min-w-0 space-y-4">
                 <div className="flex items-center gap-2.5">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-[#2EE6A6]/15 text-[#2EE6A6]">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-[#2EE6A6]/15 text-[#2EE6A6]">
                     <User className="h-4 w-4" />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <h2 className="text-lg font-semibold text-white">Identity &amp; Basics</h2>
                     <p className="text-xs text-slate-400">
                       Calibrates your baseline metabolic equation
@@ -337,7 +337,7 @@ export function OnboardingWizard() {
                   </div>
                 </div>
 
-                <label className="block">
+                <label className="block min-w-0">
                   <span className="text-xs font-medium text-slate-300">Display Name *</span>
                   <input
                     type="text"
@@ -346,7 +346,7 @@ export function OnboardingWizard() {
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="Alex"
-                    className="mt-1.5 min-h-[44px] w-full rounded-xl border border-white/10 bg-[#0A0C10] px-3.5 py-2 text-base text-white outline-none transition placeholder:text-slate-600 focus:border-[#2EE6A6] sm:text-sm"
+                    className="mt-1.5 min-h-[44px] w-full min-w-0 max-w-full rounded-xl border border-white/10 bg-[#0A0C10] px-3.5 py-2 text-base text-white outline-none transition placeholder:text-slate-600 focus:border-[#2EE6A6] sm:text-sm"
                   />
                 </label>
 
@@ -358,7 +358,7 @@ export function OnboardingWizard() {
                         key={option}
                         type="button"
                         onClick={() => setGender(option)}
-                        className={`min-h-[44px] cursor-pointer rounded-xl border px-3 py-2 text-sm font-semibold capitalize transition ${
+                        className={`min-h-[44px] min-w-0 cursor-pointer rounded-xl border px-2 py-2 text-sm font-semibold capitalize transition sm:px-3 ${
                           gender === option
                             ? 'border-[#2EE6A6]/60 bg-[#2EE6A6]/15 text-[#2EE6A6]'
                             : 'border-white/10 bg-[#0A0C10] text-slate-300 hover:bg-white/[0.04]'
@@ -371,18 +371,18 @@ export function OnboardingWizard() {
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <label className="block">
+                  <label className="block min-w-0">
                     <span className="text-xs font-medium text-slate-300">Birth Date *</span>
                     <input
                       type="date"
                       required
                       value={birthDate}
                       onChange={(e) => setBirthDate(e.target.value)}
-                      className="mt-1.5 min-h-[44px] w-full rounded-xl border border-white/10 bg-[#0A0C10] px-3.5 py-2 text-base text-white outline-none transition focus:border-[#2EE6A6] sm:text-sm"
+                      className="mt-1.5 min-h-[44px] w-full min-w-0 max-w-full appearance-none rounded-xl border border-white/10 bg-[#0A0C10] px-3.5 py-2 text-base text-white outline-none transition focus:border-[#2EE6A6] sm:text-sm"
                     />
                   </label>
 
-                  <label className="block">
+                  <label className="block min-w-0">
                     <span className="text-xs font-medium text-slate-300">Height (cm) *</span>
                     <input
                       type="number"
@@ -394,7 +394,7 @@ export function OnboardingWizard() {
                       value={heightCm}
                       onChange={(e) => setHeightCm(e.target.value)}
                       placeholder="176"
-                      className="mt-1.5 min-h-[44px] w-full rounded-xl border border-white/10 bg-[#0A0C10] px-3.5 py-2 text-base tabular-nums text-white outline-none transition placeholder:text-slate-600 focus:border-[#2EE6A6] sm:text-sm"
+                      className="mt-1.5 min-h-[44px] w-full min-w-0 max-w-full rounded-xl border border-white/10 bg-[#0A0C10] px-3.5 py-2 text-base tabular-nums text-white outline-none transition placeholder:text-slate-600 focus:border-[#2EE6A6] sm:text-sm"
                     />
                   </label>
                 </div>
@@ -402,12 +402,12 @@ export function OnboardingWizard() {
             ) : null}
 
             {step === 2 ? (
-              <div className="space-y-4">
+              <div className="min-w-0 space-y-4">
                 <div className="flex items-center gap-2.5">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-[#38BDF8]/15 text-[#38BDF8]">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-[#38BDF8]/15 text-[#38BDF8]">
                     <Scale className="h-4 w-4" />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <h2 className="text-lg font-semibold text-white">
                       Body Composition &amp; Activity
                     </h2>
@@ -418,7 +418,7 @@ export function OnboardingWizard() {
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <label className="block">
+                  <label className="block min-w-0">
                     <span className="text-xs font-medium text-slate-300">Weight (kg) *</span>
                     <input
                       type="number"
@@ -430,11 +430,11 @@ export function OnboardingWizard() {
                       value={weightKg}
                       onChange={(e) => setWeightKg(e.target.value)}
                       placeholder="74.5"
-                      className="mt-1.5 min-h-[44px] w-full rounded-xl border border-white/10 bg-[#0A0C10] px-3.5 py-2 text-base tabular-nums text-white outline-none transition placeholder:text-slate-600 focus:border-[#38BDF8] sm:text-sm"
+                      className="mt-1.5 min-h-[44px] w-full min-w-0 max-w-full rounded-xl border border-white/10 bg-[#0A0C10] px-3.5 py-2 text-base tabular-nums text-white outline-none transition placeholder:text-slate-600 focus:border-[#38BDF8] sm:text-sm"
                     />
                   </label>
 
-                  <label className="block">
+                  <label className="block min-w-0">
                     <span className="text-xs font-medium text-slate-300">Body Fat (%)</span>
                     <input
                       type="number"
@@ -445,11 +445,11 @@ export function OnboardingWizard() {
                       value={bodyFatPct}
                       onChange={(e) => setBodyFatPct(e.target.value)}
                       placeholder="Optional"
-                      className="mt-1.5 min-h-[44px] w-full rounded-xl border border-white/10 bg-[#0A0C10] px-3.5 py-2 text-base tabular-nums text-white outline-none transition placeholder:text-slate-600 focus:border-[#FFB020] sm:text-sm"
+                      className="mt-1.5 min-h-[44px] w-full min-w-0 max-w-full rounded-xl border border-white/10 bg-[#0A0C10] px-3.5 py-2 text-base tabular-nums text-white outline-none transition placeholder:text-slate-600 focus:border-[#FFB020] sm:text-sm"
                     />
                   </label>
 
-                  <label className="block">
+                  <label className="block min-w-0">
                     <span className="text-xs font-medium text-slate-300">Muscle Mass (kg)</span>
                     <input
                       type="number"
@@ -460,14 +460,14 @@ export function OnboardingWizard() {
                       value={skeletalMuscleKg}
                       onChange={(e) => setSkeletalMuscleKg(e.target.value)}
                       placeholder="Optional"
-                      className="mt-1.5 min-h-[44px] w-full rounded-xl border border-white/10 bg-[#0A0C10] px-3.5 py-2 text-base tabular-nums text-white outline-none transition placeholder:text-slate-600 focus:border-[#2EE6A6] sm:text-sm"
+                      className="mt-1.5 min-h-[44px] w-full min-w-0 max-w-full rounded-xl border border-white/10 bg-[#0A0C10] px-3.5 py-2 text-base tabular-nums text-white outline-none transition placeholder:text-slate-600 focus:border-[#2EE6A6] sm:text-sm"
                     />
                   </label>
                 </div>
 
                 <div className="flex items-start gap-2 rounded-2xl border border-[#38BDF8]/20 bg-[#38BDF8]/8 px-3.5 py-2.5 text-xs text-slate-300">
                   <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#38BDF8]" />
-                  <span>
+                  <span className="min-w-0 flex-1 break-words">
                     Adding Body Fat % automatically upgrades your BMR calculation from{' '}
                     <strong className="text-white">Mifflin-St Jeor</strong> to{' '}
                     <strong className="text-[#2EE6A6]">Katch-McArdle (LBM)</strong>.
@@ -486,21 +486,23 @@ export function OnboardingWizard() {
                           key={opt.value}
                           type="button"
                           onClick={() => setActivityMultiplier(opt.value)}
-                          className={`flex min-h-[44px] cursor-pointer flex-col items-start justify-center rounded-2xl border px-3.5 py-2.5 text-left transition ${
+                          className={`flex min-h-[44px] min-w-0 cursor-pointer flex-col items-start justify-center rounded-2xl border px-3.5 py-2.5 text-left transition ${
                             active
                               ? 'border-[#2EE6A6]/60 bg-[#2EE6A6]/12'
                               : 'border-white/10 bg-[#0A0C10] hover:bg-white/[0.04]'
                           }`}
                         >
-                          <div className="flex w-full items-center justify-between gap-2">
+                          <div className="flex w-full min-w-0 items-center justify-between gap-2">
                             <span
-                              className={`text-xs font-semibold ${
+                              className={`min-w-0 break-words text-xs font-semibold ${
                                 active ? 'text-[#2EE6A6]' : 'text-white'
                               }`}
                             >
                               {opt.title}
                             </span>
-                            {active ? <Check className="h-3.5 w-3.5 text-[#2EE6A6]" /> : null}
+                            {active ? (
+                              <Check className="h-3.5 w-3.5 shrink-0 text-[#2EE6A6]" />
+                            ) : null}
                           </div>
                           <span className="mt-0.5 text-[11px] text-slate-400">{opt.subtitle}</span>
                         </button>
@@ -512,12 +514,12 @@ export function OnboardingWizard() {
             ) : null}
 
             {step === 3 ? (
-              <div className="space-y-4">
+              <div className="min-w-0 space-y-4">
                 <div className="flex items-center gap-2.5">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-[#FFB020]/15 text-[#FFB020]">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-[#FFB020]/15 text-[#FFB020]">
                     <Target className="h-4 w-4" />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <h2 className="text-lg font-semibold text-white">Goal &amp; Calorie Target</h2>
                     <p className="text-xs text-slate-400">
                       Choose your recomposition phase and fine-tune daily offset
@@ -533,7 +535,7 @@ export function OnboardingWizard() {
                         key={opt.value}
                         type="button"
                         onClick={() => handleSelectGoal(opt)}
-                        className={`flex min-h-[44px] cursor-pointer flex-col items-start justify-between rounded-2xl border p-3.5 text-left transition ${
+                        className={`flex min-h-[44px] min-w-0 cursor-pointer flex-col items-start justify-between rounded-2xl border p-3.5 text-left transition ${
                           active
                             ? opt.accentClass
                             : 'border-white/10 bg-[#0A0C10] text-slate-300 hover:bg-white/[0.04]'
@@ -541,7 +543,7 @@ export function OnboardingWizard() {
                       >
                         <div className="flex w-full items-center justify-between gap-2">
                           <span className="text-sm font-bold">{opt.title}</span>
-                          <span className="tabular-nums rounded-full bg-black/30 px-2 py-0.5 text-[11px] font-semibold">
+                          <span className="tabular-nums shrink-0 rounded-full bg-black/30 px-2 py-0.5 text-[11px] font-semibold">
                             {opt.badge}
                           </span>
                         </div>
@@ -553,7 +555,7 @@ export function OnboardingWizard() {
                   })}
                 </div>
 
-                <label className="block">
+                <label className="block min-w-0">
                   <span className="text-xs font-medium text-slate-300">
                     Daily Calorie Adjustment (kcal)
                   </span>
@@ -566,29 +568,29 @@ export function OnboardingWizard() {
                     required
                     value={calorieAdjustment}
                     onChange={(e) => setCalorieAdjustment(e.target.value)}
-                    className="mt-1.5 min-h-[44px] w-full rounded-xl border border-white/10 bg-[#0A0C10] px-3.5 py-2 text-base tabular-nums text-white outline-none transition focus:border-[#2EE6A6] sm:text-sm"
+                    className="mt-1.5 min-h-[44px] w-full min-w-0 max-w-full rounded-xl border border-white/10 bg-[#0A0C10] px-3.5 py-2 text-base tabular-nums text-white outline-none transition focus:border-[#2EE6A6] sm:text-sm"
                   />
                 </label>
 
                 {preview ? (
-                  <div className="rounded-2xl border border-white/10 bg-[#0F131C]/90 p-3.5">
-                    <div className="flex items-center justify-between text-xs">
+                  <div className="min-w-0 rounded-2xl border border-white/10 bg-[#0F131C]/90 p-3.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
                       <span className="flex items-center gap-1.5 font-medium text-slate-400">
-                        <Flame className="h-3.5 w-3.5 text-[#FFB020]" />
-                        Engine Preview ({preview.formula})
+                        <Flame className="h-3.5 w-3.5 shrink-0 text-[#FFB020]" />
+                        <span>Engine Preview ({preview.formula})</span>
                       </span>
                       <span className="tabular-nums font-semibold text-[#2EE6A6]">
                         Target: {preview.targetCalories.toLocaleString()} kcal/day
                       </span>
                     </div>
                     <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-slate-400">
-                      <div className="rounded-xl bg-[#0A0C10] px-3 py-2">
+                      <div className="min-w-0 rounded-xl bg-[#0A0C10] px-3 py-2">
                         Resting BMR:{' '}
                         <strong className="tabular-nums text-white">
                           {preview.bmr.toLocaleString()} kcal
                         </strong>
                       </div>
-                      <div className="rounded-xl bg-[#0A0C10] px-3 py-2">
+                      <div className="min-w-0 rounded-xl bg-[#0A0C10] px-3 py-2">
                         Baseline TDEE:{' '}
                         <strong className="tabular-nums text-white">
                           {preview.baselineTdee.toLocaleString()} kcal
@@ -607,7 +609,9 @@ export function OnboardingWizard() {
                 className="flex items-start gap-2 rounded-2xl border border-[#FF5C6C]/30 bg-[#FF5C6C]/12 px-3.5 py-3 text-xs text-[#FF8A95]"
               >
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-[#FF5C6C]" />
-                <span className="leading-relaxed font-medium">{error}</span>
+                <span className="min-w-0 flex-1 break-words leading-relaxed font-medium">
+                  {error}
+                </span>
               </div>
             ) : null}
 

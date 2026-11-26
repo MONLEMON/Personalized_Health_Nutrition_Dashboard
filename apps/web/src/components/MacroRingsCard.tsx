@@ -94,17 +94,17 @@ export function MacroRingsCard({ energy, macros }: MacroRingsCardProps) {
       subtitle="Real-time target synced to Dynamic TDEE"
       icon={<PieChart className="h-4 w-4 text-[#2EE6A6]" />}
       headerRight={
-        <span className="tabular-nums inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-medium text-slate-300">
-          <Flame className="h-3.5 w-3.5 text-[#FFB020]" />
+        <span className="tabular-nums inline-flex max-w-full items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-slate-300 sm:px-3">
+          <Flame className="h-3.5 w-3.5 shrink-0 text-[#FFB020]" />
           {energy.intakePercentage}% intake
         </span>
       }
       accentGlow="sky"
       className="h-full"
     >
-      <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
+      <div className="flex min-w-0 flex-col gap-5 sm:flex-row sm:items-center sm:gap-6">
         {/* Hero Calories Remaining Ring */}
-        <div className="flex flex-col items-center justify-center rounded-2xl border border-white/5 bg-[#0F131C]/80 p-5 sm:w-[240px] sm:shrink-0">
+        <div className="flex min-w-0 flex-col items-center justify-center rounded-2xl border border-white/5 bg-[#0F131C]/80 p-4 sm:w-[240px] sm:shrink-0 sm:p-5">
           <div className="relative flex items-center justify-center">
             <RadialRing
               size={156}
@@ -128,13 +128,13 @@ export function MacroRingsCard({ energy, macros }: MacroRingsCardProps) {
           </div>
 
           <div className="mt-4 w-full space-y-1.5 border-t border-white/5 pt-3 text-xs">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5">
               <span className="text-slate-400">Consumed / Target</span>
               <span className="tabular-nums font-semibold text-white">
                 {energy.consumedCalories.toLocaleString()} / {energy.targetCalories.toLocaleString()}
               </span>
             </div>
-            <div className="flex items-center justify-between text-[11px] text-slate-400">
+            <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 text-[11px] text-slate-400">
               <span>Dynamic TDEE</span>
               <span className="tabular-nums text-slate-300">
                 {energy.bmr} × {multiplierApprox} + {energy.activeCalories} ={' '}
@@ -145,7 +145,7 @@ export function MacroRingsCard({ energy, macros }: MacroRingsCardProps) {
         </div>
 
         {/* 3 Macro Radial Rings */}
-        <div className="grid flex-1 grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
+        <div className="grid min-w-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
           {MACRO_CONFIGS.map((cfg) => {
             const item = macros[cfg.key];
             const overGrams = item.remaining < 0;
@@ -153,23 +153,23 @@ export function MacroRingsCard({ energy, macros }: MacroRingsCardProps) {
             return (
               <div
                 key={cfg.key}
-                className="flex flex-row items-center justify-between gap-3 rounded-2xl border border-white/5 bg-[#0F131C]/75 p-4 sm:flex-col sm:justify-center sm:text-center lg:flex-row lg:justify-between lg:text-left xl:flex-col xl:justify-center xl:text-center"
+                className="flex min-w-0 flex-row items-center justify-between gap-3 rounded-2xl border border-white/5 bg-[#0F131C]/75 p-3.5 sm:flex-col sm:justify-center sm:p-4 sm:text-center lg:flex-row lg:justify-between lg:text-left xl:flex-col xl:justify-center xl:text-center"
               >
                 <div className="relative flex shrink-0 items-center justify-center">
                   <RadialRing
-                    size={88}
+                    size={80}
                     strokeWidth={8}
                     percentage={item.percentage}
                     color={cfg.color}
                   />
                   <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <span className="tabular-nums text-base font-bold text-white">
+                    <span className="tabular-nums text-sm font-bold text-white sm:text-base">
                       {item.percentage}%
                     </span>
                   </div>
                 </div>
 
-                <div className="min-w-0 space-y-1">
+                <div className="min-w-0 flex-1 space-y-1 text-right sm:flex-none sm:text-center lg:text-left xl:text-center">
                   <div className="flex items-center justify-end gap-1.5 sm:justify-center lg:justify-start xl:justify-center">
                     <span
                       className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${cfg.badgeBg}`}

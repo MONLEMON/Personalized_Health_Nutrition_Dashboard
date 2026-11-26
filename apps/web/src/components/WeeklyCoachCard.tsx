@@ -551,17 +551,17 @@ export function WeeklyCoachCard({
       icon={<BrainCircuit className="h-4 w-4 text-[#2EE6A6]" />}
       accentGlow="mint"
       headerRight={
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <div className="flex items-center gap-1 rounded-2xl border border-white/10 bg-[#0A0C10]/70 p-1">
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:justify-end">
+          <div className="flex w-full items-center justify-between gap-1 rounded-2xl border border-white/10 bg-[#0A0C10]/70 p-1 sm:w-auto">
             <button
               type="button"
               onClick={handlePrevWeek}
               aria-label="Previous week"
-              className="flex min-h-[38px] min-w-[38px] cursor-pointer items-center justify-center rounded-xl text-slate-300 transition hover:bg-white/10 hover:text-white"
+              className="flex min-h-[38px] min-w-[38px] shrink-0 cursor-pointer items-center justify-center rounded-xl text-slate-300 transition hover:bg-white/10 hover:text-white"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <span className="tabular-nums px-2 text-center text-xs font-semibold text-white">
+            <span className="tabular-nums min-w-0 truncate px-1.5 text-center text-[11px] font-semibold whitespace-nowrap text-white sm:px-2 sm:text-xs">
               {displayWeekStart} → {displayWeekEnd}
             </span>
             <button
@@ -569,7 +569,7 @@ export function WeeklyCoachCard({
               onClick={handleNextWeek}
               disabled={isAtCurrentWeek}
               aria-label="Next week"
-              className="flex min-h-[38px] min-w-[38px] cursor-pointer items-center justify-center rounded-xl text-slate-300 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-35"
+              className="flex min-h-[38px] min-w-[38px] shrink-0 cursor-pointer items-center justify-center rounded-xl text-slate-300 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-35"
             >
               <ChevronRight className="h-4 w-4" />
             </button>
@@ -579,7 +579,7 @@ export function WeeklyCoachCard({
             type="button"
             onClick={() => void handleGenerate()}
             disabled={generating || applying || loadingStatus}
-            className={`inline-flex min-h-[44px] cursor-pointer items-center justify-center gap-2 rounded-2xl px-4 py-2 text-xs font-bold transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55 ${
+            className={`inline-flex min-h-[44px] w-full shrink-0 cursor-pointer items-center justify-center gap-2 rounded-2xl px-4 py-2 text-xs font-bold transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55 sm:w-auto ${
               report
                 ? 'border border-[#2EE6A6]/40 bg-[#2EE6A6]/15 text-[#2EE6A6] hover:bg-[#2EE6A6]/25'
                 : 'bg-[#2EE6A6] text-[#081016] hover:brightness-110'
@@ -605,21 +605,21 @@ export function WeeklyCoachCard({
         </div>
       }
     >
-      <div className="space-y-4">
+      <div className="min-w-0 space-y-4">
         {/* Status Error Alert */}
         {statusError ? (
           <div
             role="alert"
             className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#FF5C6C]/35 bg-[#FF5C6C]/12 px-4 py-3 text-xs text-[#FF8A95]"
           >
-            <div className="flex items-center gap-2">
+            <div className="flex min-w-0 flex-1 items-center gap-2">
               <AlertCircle className="h-4 w-4 shrink-0 text-[#FF5C6C]" />
-              <span>{statusError}</span>
+              <span className="min-w-0 break-words">{statusError}</span>
             </div>
             <button
               type="button"
               onClick={() => void loadWeekStatus(weekStart)}
-              className="inline-flex min-h-[36px] cursor-pointer items-center gap-1.5 rounded-xl bg-white/10 px-3 py-1.5 font-semibold text-white transition hover:bg-white/20"
+              className="inline-flex min-h-[36px] shrink-0 cursor-pointer items-center gap-1.5 rounded-xl bg-white/10 px-3 py-1.5 font-semibold text-white transition hover:bg-white/20"
             >
               <RefreshCw className="h-3.5 w-3.5" />
               Retry
@@ -633,9 +633,9 @@ export function WeeklyCoachCard({
             role="alert"
             className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#FF5C6C]/35 bg-[#FF5C6C]/12 px-4 py-3 text-xs text-[#FF8A95]"
           >
-            <div className="flex items-center gap-2">
+            <div className="flex min-w-0 flex-1 items-center gap-2">
               <AlertCircle className="h-4 w-4 shrink-0 text-[#FF5C6C]" />
-              <span>{actionError}</span>
+              <span className="min-w-0 break-words">{actionError}</span>
             </div>
             {lastActionFailed ? (
               <button
@@ -644,7 +644,7 @@ export function WeeklyCoachCard({
                   void (lastActionFailed === 'apply' ? handleApply() : handleGenerate())
                 }
                 disabled={generating || applying}
-                className="inline-flex min-h-[36px] cursor-pointer items-center gap-1.5 rounded-xl bg-white/10 px-3 py-1.5 font-semibold text-white transition hover:bg-white/20 disabled:opacity-50"
+                className="inline-flex min-h-[36px] shrink-0 cursor-pointer items-center gap-1.5 rounded-xl bg-white/10 px-3 py-1.5 font-semibold text-white transition hover:bg-white/20 disabled:opacity-50"
               >
                 <RefreshCw className="h-3.5 w-3.5" />
                 Retry
@@ -655,7 +655,7 @@ export function WeeklyCoachCard({
 
         {/* Loading Skeleton when initial metrics haven't loaded */}
         {loadingStatus && !activeMetrics ? (
-          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2 sm:gap-2.5 lg:grid-cols-4">
             {Array.from({ length: 4 }).map((_, idx) => (
               <div
                 key={idx}
@@ -667,35 +667,37 @@ export function WeeklyCoachCard({
 
         {/* 4 KPI Metric Tiles */}
         {activeMetrics ? (
-          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2 sm:gap-2.5 lg:grid-cols-4">
             {/* Tile 1: Observed TDEE */}
-            <div className="rounded-2xl border border-white/5 bg-[#0F131C]/85 p-3.5">
-              <div className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-slate-400">
-                <Flame className="h-3.5 w-3.5 text-[#38BDF8]" />
-                <span>Observed TDEE</span>
+            <div className="min-w-0 rounded-2xl border border-white/5 bg-[#0F131C]/85 p-3 sm:p-3.5">
+              <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-slate-400 sm:text-[11px]">
+                <Flame className="h-3.5 w-3.5 shrink-0 text-[#38BDF8]" />
+                <span className="truncate">Observed TDEE</span>
               </div>
               {activeMetrics.observedTdee !== null ? (
-                <div className="tabular-nums mt-1.5 text-xl font-bold text-white">
+                <div className="tabular-nums mt-1.5 text-base font-bold text-white sm:text-xl">
                   {activeMetrics.observedTdee.toLocaleString()}{' '}
                   <span className="text-xs font-normal text-slate-400">kcal</span>
                 </div>
               ) : (
-                <div className="mt-1.5 text-base font-bold text-[#FFB020]">Need 5+ days</div>
+                <div className="mt-1.5 text-sm font-bold text-[#FFB020] sm:text-base">
+                  Need 5+ days
+                </div>
               )}
-              <div className="tabular-nums mt-1 text-[11px] text-slate-400">
+              <div className="tabular-nums mt-1 truncate text-[11px] text-slate-400">
                 Estimated TDEE: {activeMetrics.estimatedTdee.toLocaleString()} kcal
               </div>
             </div>
 
             {/* Tile 2: 7-Day Weight Trend */}
-            <div className="rounded-2xl border border-white/5 bg-[#0F131C]/85 p-3.5">
-              <div className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-slate-400">
-                <Scale className="h-3.5 w-3.5 text-[#2EE6A6]" />
-                <span>7-Day Weight Trend</span>
+            <div className="min-w-0 rounded-2xl border border-white/5 bg-[#0F131C]/85 p-3 sm:p-3.5">
+              <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-slate-400 sm:text-[11px]">
+                <Scale className="h-3.5 w-3.5 shrink-0 text-[#2EE6A6]" />
+                <span className="truncate">7-Day Weight Trend</span>
               </div>
               {activeMetrics.weightDeltaKg !== null ? (
                 <div
-                  className={`tabular-nums mt-1.5 flex items-baseline gap-1.5 text-xl font-bold ${getWeightTrendColor(
+                  className={`tabular-nums mt-1.5 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-base font-bold sm:text-xl ${getWeightTrendColor(
                     activeMetrics.weightDeltaPct,
                     fallbackGoal?.goalType,
                   )}`}
@@ -708,9 +710,11 @@ export function WeeklyCoachCard({
                   ) : null}
                 </div>
               ) : (
-                <div className="mt-1.5 text-base font-bold text-slate-300">Need 2 weeks</div>
+                <div className="mt-1.5 text-sm font-bold text-slate-300 sm:text-base">
+                  Need 2 weeks
+                </div>
               )}
-              <div className="tabular-nums mt-1 text-[11px] text-slate-400">
+              <div className="tabular-nums mt-1 truncate text-[11px] text-slate-400">
                 {activeMetrics.currentWeightMa7 !== null && activeMetrics.previousWeightMa7 !== null
                   ? `MA7: ${activeMetrics.previousWeightMa7.toFixed(1)} → ${activeMetrics.currentWeightMa7.toFixed(1)} kg`
                   : activeMetrics.currentWeightMa7 !== null
@@ -720,18 +724,18 @@ export function WeeklyCoachCard({
             </div>
 
             {/* Tile 3: Avg Intake & Protein Adherence */}
-            <div className="rounded-2xl border border-white/5 bg-[#0F131C]/85 p-3.5">
-              <div className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-slate-400">
-                <Target className="h-3.5 w-3.5 text-[#2EE6A6]" />
-                <span>Avg Intake &amp; Protein</span>
+            <div className="min-w-0 rounded-2xl border border-white/5 bg-[#0F131C]/85 p-3 sm:p-3.5">
+              <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-slate-400 sm:text-[11px]">
+                <Target className="h-3.5 w-3.5 shrink-0 text-[#2EE6A6]" />
+                <span className="truncate">Avg Intake &amp; Protein</span>
               </div>
-              <div className="tabular-nums mt-1.5 text-lg font-bold text-white">
+              <div className="tabular-nums mt-1.5 text-base font-bold text-white sm:text-xl">
                 {activeMetrics.avgIntakeCalories.toLocaleString()}{' '}
-                <span className="text-xs font-normal text-slate-400">
+                <span className="text-[11px] font-normal text-slate-400 sm:text-xs">
                   / {activeMetrics.avgTargetCalories.toLocaleString()} kcal
                 </span>
               </div>
-              <div className="tabular-nums mt-1 text-[11px] text-slate-400">
+              <div className="tabular-nums mt-1 leading-snug text-[11px] text-slate-400">
                 <span
                   className={
                     activeMetrics.proteinAdherencePct >= 85
@@ -746,12 +750,12 @@ export function WeeklyCoachCard({
             </div>
 
             {/* Tile 4: Activity & Recovery */}
-            <div className="rounded-2xl border border-white/5 bg-[#0F131C]/85 p-3.5">
-              <div className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-slate-400">
-                <Activity className="h-3.5 w-3.5 text-[#FFB020]" />
-                <span>Activity &amp; Recovery</span>
+            <div className="min-w-0 rounded-2xl border border-white/5 bg-[#0F131C]/85 p-3 sm:p-3.5">
+              <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-slate-400 sm:text-[11px]">
+                <Activity className="h-3.5 w-3.5 shrink-0 text-[#FFB020]" />
+                <span className="truncate">Activity &amp; Recovery</span>
               </div>
-              <div className="tabular-nums mt-1.5 text-lg font-bold text-[#FFB020]">
+              <div className="tabular-nums mt-1.5 text-base font-bold text-[#FFB020] sm:text-xl">
                 +{activeMetrics.totalActiveCalories.toLocaleString()} kcal{' '}
                 <span className="text-xs font-normal text-slate-400">
                   · {activeMetrics.workoutDays}d
@@ -783,8 +787,8 @@ export function WeeklyCoachCard({
 
         {/* Adaptive Recommendation Bar */}
         {activeRecommendation ? (
-          <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-[#0F131C]/90 p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="space-y-1">
+          <div className="flex min-w-0 flex-col gap-3 rounded-2xl border border-white/10 bg-[#0F131C]/90 p-3.5 sm:flex-row sm:items-center sm:justify-between sm:p-4">
+            <div className="min-w-0 flex-1 space-y-1">
               <div className="flex flex-wrap items-center gap-2">
                 {deltaBadge ? (
                   <span
@@ -811,12 +815,12 @@ export function WeeklyCoachCard({
                 </span>
               </div>
 
-              <p className="text-xs text-slate-400">
+              <p className="break-words text-xs text-slate-400">
                 {REASON_LABELS[activeRecommendation.reasonCode]}
               </p>
 
               {!report ? (
-                <p className="text-[11px] text-[#38BDF8]">
+                <p className="break-words text-[11px] text-[#38BDF8]">
                   {activeRecommendation.canApply
                     ? 'Generate the AI Coach report above to unlock 1-click Apply Target for this calorie adjustment.'
                     : 'Click Generate AI Coach above for a personalized weekly review and action plan.'}
@@ -824,9 +828,9 @@ export function WeeklyCoachCard({
               ) : null}
             </div>
 
-            <div className="shrink-0">
+            <div className="w-full shrink-0 sm:w-auto">
               {report && report.appliedAt ? (
-                <span className="inline-flex min-h-[44px] items-center gap-1.5 rounded-2xl border border-[#2EE6A6]/40 bg-[#2EE6A6]/15 px-4 py-2 text-xs font-bold text-[#2EE6A6]">
+                <span className="inline-flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-2xl border border-[#2EE6A6]/40 bg-[#2EE6A6]/15 px-4 py-2 text-xs font-bold text-[#2EE6A6] sm:w-auto">
                   <Check className="h-4 w-4" />
                   Applied ✓
                 </span>
@@ -864,11 +868,11 @@ export function WeeklyCoachCard({
 
         {/* AI Narrative Card */}
         {report ? (
-          <div className="space-y-4 rounded-2xl border border-white/10 bg-gradient-to-br from-[#141720] via-[#0F131C] to-[#0B1218] p-4 sm:p-5">
+          <div className="min-w-0 space-y-4 break-words rounded-2xl border border-white/10 bg-gradient-to-br from-[#141720] via-[#0F131C] to-[#0B1218] p-3.5 sm:p-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-3.5">
+              <div className="flex min-w-0 items-start gap-3 sm:items-center sm:gap-3.5">
                 <WeeklyScoreRing score={report.narrative.weeklyScore} />
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span
                       className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
@@ -884,39 +888,39 @@ export function WeeklyCoachCard({
                       Generated {new Date(report.generatedAt).toLocaleDateString()}
                     </span>
                   </div>
-                  <h3 className="mt-1 text-base font-bold text-white">
+                  <h3 className="mt-1 break-words text-sm font-bold text-white sm:text-base">
                     {report.narrative.headline}
                   </h3>
                 </div>
               </div>
             </div>
 
-            <p className="text-xs leading-relaxed text-slate-300 sm:text-sm">
+            <p className="break-words text-xs leading-relaxed text-slate-300 sm:text-sm">
               {report.narrative.summary}
             </p>
 
             {/* 3 Scannable Columns */}
             <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
               {/* Wins */}
-              <div className="rounded-2xl border border-[#2EE6A6]/25 bg-[#2EE6A6]/[0.06] p-3.5">
+              <div className="min-w-0 break-words rounded-2xl border border-[#2EE6A6]/25 bg-[#2EE6A6]/[0.06] p-3.5">
                 <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#2EE6A6]">
-                  <Trophy className="h-3.5 w-3.5" />
+                  <Trophy className="h-3.5 w-3.5 shrink-0" />
                   <span>Wins</span>
                 </div>
                 <ul className="mt-2 space-y-1.5 text-xs leading-relaxed text-slate-200">
                   {report.narrative.wins.map((item, idx) => (
                     <li key={idx} className="flex items-start gap-2">
                       <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#2EE6A6]" />
-                      <span>{item}</span>
+                      <span className="min-w-0 flex-1 break-words">{item}</span>
                     </li>
                   ))}
                 </ul>
               </div>
 
               {/* Bottlenecks */}
-              <div className="rounded-2xl border border-[#FFB020]/25 bg-[#FFB020]/[0.06] p-3.5">
+              <div className="min-w-0 break-words rounded-2xl border border-[#FFB020]/25 bg-[#FFB020]/[0.06] p-3.5">
                 <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#FFB020]">
-                  <AlertTriangle className="h-3.5 w-3.5" />
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
                   <span>Bottlenecks</span>
                 </div>
                 {report.narrative.bottlenecks.length > 0 ? (
@@ -924,7 +928,7 @@ export function WeeklyCoachCard({
                     {report.narrative.bottlenecks.map((item, idx) => (
                       <li key={idx} className="flex items-start gap-2">
                         <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#FFB020]" />
-                        <span>{item}</span>
+                        <span className="min-w-0 flex-1 break-words">{item}</span>
                       </li>
                     ))}
                   </ul>
@@ -936,16 +940,16 @@ export function WeeklyCoachCard({
               </div>
 
               {/* Next Week Action Plan */}
-              <div className="rounded-2xl border border-[#38BDF8]/25 bg-[#38BDF8]/[0.06] p-3.5">
+              <div className="min-w-0 break-words rounded-2xl border border-[#38BDF8]/25 bg-[#38BDF8]/[0.06] p-3.5">
                 <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#38BDF8]">
-                  <ListChecks className="h-3.5 w-3.5" />
+                  <ListChecks className="h-3.5 w-3.5 shrink-0" />
                   <span>Next Week Action Plan</span>
                 </div>
                 <ul className="mt-2 space-y-1.5 text-xs leading-relaxed text-slate-200">
                   {report.narrative.actionPlan.map((item, idx) => (
                     <li key={idx} className="flex items-start gap-2">
                       <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#38BDF8]" />
-                      <span>{item}</span>
+                      <span className="min-w-0 flex-1 break-words">{item}</span>
                     </li>
                   ))}
                 </ul>
@@ -953,7 +957,7 @@ export function WeeklyCoachCard({
             </div>
 
             {/* Adjustment Rationale */}
-            <div className="rounded-xl border border-white/10 bg-[#0A0C10]/70 px-3.5 py-2.5 text-xs text-slate-300">
+            <div className="min-w-0 break-words rounded-xl border border-white/10 bg-[#0A0C10]/70 px-3.5 py-2.5 text-xs text-slate-300">
               <span className="font-semibold text-white">Adjustment Rationale: </span>
               {report.narrative.adjustmentRationale}
             </div>
