@@ -255,6 +255,49 @@ export const WeeklyCoachAiNarrativeSchema = z.object({
   adjustmentRationale: z.string().trim().min(1).max(400),
 });
 
+const loggableMealTypeEnum = z.enum(['breakfast', 'lunch', 'dinner', 'snack']);
+const isoDateField = z.string().regex(isoDateRegex, 'Expected YYYY-MM-DD');
+
+export const updateNutritionLogSchema = z.object({
+  itemName: z.string().trim().min(1, 'Item name is required').max(120),
+  mealType: loggableMealTypeEnum,
+  calories: z.coerce.number().min(0).max(10000),
+  proteinG: z.coerce.number().min(0).max(1000),
+  carbsG: z.coerce.number().min(0).max(1500),
+  fatG: z.coerce.number().min(0).max(1000),
+});
+
+export const CreateSavedMealSchema = z.object({
+  name: z.string().trim().min(1, 'Meal name is required').max(120),
+  defaultMealType: loggableMealTypeEnum,
+  calories: z.coerce.number().min(0).max(10000),
+  proteinG: z.coerce.number().min(0).max(1000),
+  carbsG: z.coerce.number().min(0).max(1500),
+  fatG: z.coerce.number().min(0).max(1000),
+  servingNote: z.string().trim().max(120).nullable().optional(),
+});
+
+export const LogSavedMealSchema = z.object({
+  loggedDate: isoDateField.optional(),
+  mealType: loggableMealTypeEnum.optional(),
+  multiplier: z.coerce.number().min(0.25).max(10).default(1),
+});
+
+export const CopyYesterdayMealsSchema = z.object({
+  targetDate: isoDateField.optional(),
+  sourceDate: isoDateField.optional(),
+  mealTypes: z.array(loggableMealTypeEnum).optional(),
+});
+
+export const AddWaterLogSchema = z.object({
+  amountMl: z.coerce.number().int().min(50).max(5000),
+  loggedDate: isoDateField.optional(),
+});
+
+export const HydrationQuerySchema = z.object({
+  date: isoDateField.optional(),
+});
+
 export type CreateNutritionLogInput = z.infer<typeof createNutritionLogSchema>;
 export type CreateWorkoutLogInput = z.infer<typeof createWorkoutLogSchema>;
 export type ToggleSupplementInput = z.infer<typeof toggleSupplementSchema>;
@@ -275,3 +318,9 @@ export type CalorieCyclingConfigInput = z.infer<typeof CalorieCyclingConfigSchem
 export type WeeklyCoachQueryInput = z.infer<typeof WeeklyCoachQuerySchema>;
 export type GenerateWeeklyCoachInput = z.infer<typeof GenerateWeeklyCoachSchema>;
 export type ApplyWeeklyCoachInput = z.infer<typeof ApplyWeeklyCoachSchema>;
+export type UpdateNutritionLogInput = z.infer<typeof updateNutritionLogSchema>;
+export type CreateSavedMealInput = z.infer<typeof CreateSavedMealSchema>;
+export type LogSavedMealInput = z.infer<typeof LogSavedMealSchema>;
+export type CopyYesterdayMealsInput = z.infer<typeof CopyYesterdayMealsSchema>;
+export type AddWaterLogInput = z.infer<typeof AddWaterLogSchema>;
+export type HydrationQueryInput = z.infer<typeof HydrationQuerySchema>;

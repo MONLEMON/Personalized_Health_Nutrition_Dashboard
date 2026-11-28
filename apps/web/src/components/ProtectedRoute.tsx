@@ -1,11 +1,28 @@
-import type { ReactNode } from 'react';
+import { lazy, Suspense, type ReactNode } from 'react';
 import { AlertCircle, LogOut, RefreshCw } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { AuthPage } from './AuthPage';
-import { OnboardingWizard } from './OnboardingWizard';
+
+const AuthPage = lazy(() => import('./AuthPage').then((m) => ({ default: m.AuthPage })));
+const OnboardingWizard = lazy(() =>
+  import('./OnboardingWizard').then((m) => ({ default: m.OnboardingWizard })),
+);
 
 export interface ProtectedRouteProps {
   children: ReactNode;
+}
+
+function RouteSpinnerFallback({ label }: { label: string }) {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-[#0A0C10] px-4 text-white">
+      <div className="flex flex-col items-center gap-3 rounded-3xl border border-white/10 bg-[#141720]/80 px-6 py-5 shadow-[0_24px_64px_-16px_rgba(0,0,0,0.9)]">
+        <div
+          aria-hidden="true"
+          className="h-8 w-8 animate-spin rounded-full border-2 border-[#2EE6A6]/25 border-t-[#2EE6A6]"
+        />
+        <span className="text-xs font-medium text-slate-400">{label}</span>
+      </div>
+    </div>
+  );
 }
 
 function AuthLoadingSkeleton() {
@@ -35,7 +52,11 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   }
 
   if (!session) {
-    return <AuthPage />;
+    return (
+      <Suspense fallback={<RouteSpinnerFallback label="Loading sign in…" />}>
+        <AuthPage />
+      </Suspense>
+    );
   }
 
   if (!me) {
@@ -73,7 +94,11 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   }
 
   if (!me.onboarded) {
-    return <OnboardingWizard />;
+    return (
+      <Suspense fallback={<RouteSpinnerFallback label="Loading onboarding…" />}>
+        <OnboardingWizard />
+      </Suspense>
+    );
   }
 
   return <>{children}</>;

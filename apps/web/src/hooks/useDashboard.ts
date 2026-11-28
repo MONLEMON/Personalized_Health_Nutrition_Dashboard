@@ -3,18 +3,27 @@ import type {
   BmrFormula,
   CalorieCyclingConfig,
   CalorieCyclingDayType,
+  CopyYesterdayMealsInput,
+  CopyYesterdayMealsResponse,
   CreateBatchNutritionLogsInput,
   CreateBodyMetricInput,
   CreateNutritionLogInput,
+  CreateSavedMealInput,
   CreateWorkoutLogInput,
   DashboardBootstrapResponse,
   DashboardTodayResponse,
+  HydrationEntryDTO,
+  LogSavedMealInput,
   MetricsTrendsResponse,
   NutritionLogDTO,
+  RecentMealSuggestionDTO,
+  SavedMealDTO,
   SupplementConfig,
   SyncStatusDTO,
   TdeeMode,
+  UpdateNutritionLogInput,
   UpdateProfileSettingsInput,
+  WaterLogSummaryDTO,
   WeekdayKey,
   WeeklyBudgetDayDTO,
   WeeklyBudgetSummaryDTO,
@@ -23,22 +32,35 @@ import type {
 import { useAuth } from '../contexts/AuthContext';
 import {
   ApiError,
+  addWaterLog as apiAddWaterLog,
+  copyYesterdayMeals as apiCopyYesterdayMeals,
   createBodyMetric,
   createNutritionLog,
   createNutritionLogsBatch,
+  createSavedMeal as apiCreateSavedMeal,
   createWorkoutLog,
   deleteNutritionLog,
+  deleteSavedMeal as apiDeleteSavedMeal,
+  deleteWaterLog as apiDeleteWaterLog,
   deleteWorkoutLog,
   fetchDashboardBootstrap,
   fetchDashboardToday,
   fetchMetricsTrends,
+  fetchSavedMeals as apiFetchSavedMeals,
   fetchWebhookSyncStatus,
+  logSavedMeal as apiLogSavedMeal,
   toggleSupplement as apiToggleSupplement,
+  updateNutritionLog as apiUpdateNutritionLog,
   updateProfileSettings as apiUpdateProfileSettings,
   updateSupplementStack as apiUpdateSupplementStack,
 } from '../lib/api';
 import { isSupabaseConfigured } from '../lib/supabase';
-import { getMockMetricsTrends, mockDashboardToday } from '../data/mockDashboard';
+import {
+  getMockMetricsTrends,
+  mockDashboardToday,
+  mockRecentMeals,
+  mockSavedMeals,
+} from '../data/mockDashboard';
 import type { TrendTimeframeDays } from '../components/BodyRecompChart';
 
 const DEFAULT_SYNC_STATUS: SyncStatusDTO = {
@@ -59,11 +81,16 @@ export interface UseDashboardReturn {
   isDemoFallback: boolean;
   togglingSupplementKey: string | null;
   submittingLog: boolean;
+  isHydrationBusy: boolean;
+  savedMeals: SavedMealDTO[];
+  recentMeals: RecentMealSuggestionDTO[];
+  isSavedMealsLoading: boolean;
   refresh: () => Promise<void>;
   refreshSyncStatus: () => Promise<void>;
   reset: () => void;
   toggleSupplement: (supplementKey: string) => Promise<void>;
   logMeal: (input: CreateNutritionLogInput) => Promise<void>;
+  updateMeal: (id: string, input: UpdateNutritionLogInput) => Promise<void>;
   logMealsBatch: (input: CreateBatchNutritionLogsInput) => Promise<void>;
   removeMeal: (id: string) => Promise<void>;
   logWorkout: (input: CreateWorkoutLogInput) => Promise<void>;
@@ -71,6 +98,13 @@ export interface UseDashboardReturn {
   logBodyMetric: (input: CreateBodyMetricInput) => Promise<void>;
   saveSupplementStack: (supplements: SupplementConfig[]) => Promise<void>;
   saveProfileSettings: (input: UpdateProfileSettingsInput) => Promise<void>;
+  fetchSavedMeals: () => Promise<void>;
+  createSavedMeal: (input: CreateSavedMealInput) => Promise<SavedMealDTO>;
+  deleteSavedMeal: (id: string) => Promise<void>;
+  logSavedMeal: (savedMealId: string, input?: LogSavedMealInput) => Promise<void>;
+  copyYesterdayMeals: (input?: CopyYesterdayMealsInput) => Promise<CopyYesterdayMealsResponse>;
+  addWater: (amountMl: number) => Promise<void>;
+  deleteWater: (id: string) => Promise<void>;
 }
 
 function calculateAgeFromBirthDate(birthDate: string, referenceDate: string): number {
@@ -107,6 +141,56 @@ function shiftIsoDateUtc(isoDate: string, deltaDays: number): string {
   const mm = String(dt.getUTCMonth() + 1).padStart(2, '0');
   const dd = String(dt.getUTCDate()).padStart(2, '0');
   return `${yy}-${mm}-${dd}`;
+}
+
+function round50(val: number): number {
+  return Math.round(val / 50) * 50;
+}
+
+function hasCreatineInStack(
+  supplementStack: SupplementConfig[],
+  supplements: DashboardTodayResponse['supplements'],
+): boolean {
+  return (
+    supplementStack.some((s) => /creatine/i.test(s.key) || /creatine/i.test(s.name)) ||
+    supplements.some((s) => /creatine/i.test(s.key) || /creatine/i.test(s.name))
+  );
+}
+
+function buildFallbackHydration(
+  dashboard: DashboardTodayResponse,
+  workouts: WorkoutLogDTO[],
+  entriesOverride?: HydrationEntryDTO[],
+): WaterLogSummaryDTO {
+  const clampedBase = Math.min(4500, Math.max(1500, dashboard.latestMetric.weightKg * 35));
+  const baseMl = round50(clampedBase);
+  const activeCalories = workouts.reduce((sum, w) => sum + w.activeCalories, 0);
+  const workoutBonusMl = Math.min(1000, round50(activeCalories * 0.5));
+  const creatineBonusMl = hasCreatineInStack(
+    dashboard.profile.supplementStack,
+    dashboard.supplements,
+  )
+    ? 500
+    : 0;
+  const targetMl = baseMl + workoutBonusMl + creatineBonusMl;
+  const entries = entriesOverride ?? dashboard.hydration?.entries ?? [];
+  const consumedMl = entries.reduce((sum, entry) => sum + entry.amountMl, 0);
+  const remainingMl = Math.max(0, targetMl - consumedMl);
+  const percentage = targetMl > 0 ? Math.round((consumedMl / targetMl) * 100) : 0;
+
+  return {
+    date: dashboard.date,
+    consumedMl,
+    targetMl,
+    remainingMl,
+    percentage,
+    breakdown: {
+      baseMl,
+      workoutBonusMl,
+      creatineBonusMl,
+    },
+    entries,
+  };
 }
 
 function resolveFallbackCycling(
@@ -282,11 +366,14 @@ function recalculateFallbackDashboard(
         )
       : undefined;
 
+  const hydration = buildFallbackHydration(prev, workouts);
+
   return {
     ...prev,
     meals,
     workouts,
     weeklyBudget,
+    hydration,
     energy: {
       ...prev.energy,
       activeCalories,
@@ -410,6 +497,11 @@ export function useDashboard(): UseDashboardReturn {
   const [isDemoFallback, setIsDemoFallback] = useState<boolean>(false);
   const [togglingSupplementKey, setTogglingSupplementKey] = useState<string | null>(null);
   const [submittingLog, setSubmittingLog] = useState<boolean>(false);
+  const [isHydrationBusy, setIsHydrationBusy] = useState<boolean>(false);
+
+  const [savedMeals, setSavedMeals] = useState<SavedMealDTO[]>([]);
+  const [recentMeals, setRecentMeals] = useState<RecentMealSuggestionDTO[]>([]);
+  const [isSavedMealsLoading, setIsSavedMealsLoading] = useState<boolean>(false);
 
   const lastAppliedBootstrapRef = useRef<DashboardBootstrapResponse | null>(
     bootstrap?.dashboard ? bootstrap : null,
@@ -418,10 +510,17 @@ export function useDashboard(): UseDashboardReturn {
     bootstrap?.dashboard && session?.user.id ? session.user.id : null,
   );
   const devLoadedRef = useRef<boolean>(false);
+  const dashboardRef = useRef<DashboardTodayResponse | null>(dashboard);
   const trendsRef = useRef<MetricsTrendsResponse | null>(trends);
   const trendDaysRef = useRef<TrendTimeframeDays>(trendDays);
+  const savedMealsRef = useRef<SavedMealDTO[]>(savedMeals);
+  const recentMealsRef = useRef<RecentMealSuggestionDTO[]>(recentMeals);
+
+  dashboardRef.current = dashboard;
   trendsRef.current = trends;
   trendDaysRef.current = trendDays;
+  savedMealsRef.current = savedMeals;
+  recentMealsRef.current = recentMeals;
 
   const loadAll = useCallback(
     async (days: TrendTimeframeDays) => {
@@ -456,6 +555,8 @@ export function useDashboard(): UseDashboardReturn {
           }
           setTrends(getMockMetricsTrends(days));
           setSyncStatus(DEFAULT_SYNC_STATUS);
+          setSavedMeals((curr) => (curr.length > 0 ? curr : mockSavedMeals));
+          setRecentMeals((curr) => (curr.length > 0 ? curr : mockRecentMeals));
           setIsDemoFallback(true);
           return mockDashboardToday;
         });
@@ -515,6 +616,10 @@ export function useDashboard(): UseDashboardReturn {
     setDashboard(null);
     setTrends(null);
     setSyncStatus(DEFAULT_SYNC_STATUS);
+    setSavedMeals([]);
+    setRecentMeals([]);
+    setIsSavedMealsLoading(false);
+    setIsHydrationBusy(false);
     setError(null);
     setIsDemoFallback(false);
     setLoading(true);
@@ -576,7 +681,6 @@ export function useDashboard(): UseDashboardReturn {
       setTogglingSupplementKey(supplementKey);
       setError(null);
 
-      // Optimistic toggle
       setDashboard((curr) => {
         if (!curr) return curr;
         return {
@@ -638,6 +742,53 @@ export function useDashboard(): UseDashboardReturn {
         syncDashboardToCache(fresh);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to log meal';
+        setError(message);
+        throw err;
+      } finally {
+        setSubmittingLog(false);
+      }
+    },
+    [isDemoFallback, syncDashboardToCache],
+  );
+
+  const updateMeal = useCallback(
+    async (id: string, input: UpdateNutritionLogInput) => {
+      setSubmittingLog(true);
+      setError(null);
+      try {
+        if (isDemoFallback) {
+          setDashboard((prev) => {
+            if (!prev) return prev;
+            const nextMeals = prev.meals.map((meal) =>
+              meal.id === id
+                ? {
+                    ...meal,
+                    itemName: input.itemName,
+                    mealType: input.mealType,
+                    calories: input.calories,
+                    proteinG: input.proteinG,
+                    carbsG: input.carbsG,
+                    fatG: input.fatG,
+                  }
+                : meal,
+            );
+            return recalculateFallbackDashboard(prev, nextMeals, prev.workouts);
+          });
+          return;
+        }
+
+        const updatedMeal = await apiUpdateNutritionLog(id, input);
+        setDashboard((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            meals: prev.meals.map((meal) => (meal.id === id ? updatedMeal : meal)),
+          };
+        });
+        const fresh = await fetchDashboardToday();
+        syncDashboardToCache(fresh);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to update meal';
         setError(message);
         throw err;
       } finally {
@@ -795,7 +946,7 @@ export function useDashboard(): UseDashboardReturn {
         if (isDemoFallback) {
           setDashboard((prev) => {
             if (!prev) return prev;
-            return {
+            const updated: DashboardTodayResponse = {
               ...prev,
               latestMetric: {
                 ...prev.latestMetric,
@@ -808,6 +959,7 @@ export function useDashboard(): UseDashboardReturn {
                 notes: input.notes ?? null,
               },
             };
+            return recalculateFallbackDashboard(updated, updated.meals, updated.workouts);
           });
           return;
         }
@@ -842,10 +994,14 @@ export function useDashboard(): UseDashboardReturn {
         if (isDemoFallback) {
           setDashboard((prev) => {
             if (!prev) return prev;
-            return {
+            const nextDashboard: DashboardTodayResponse = {
               ...prev,
               profile: { ...prev.profile, supplementStack: supplements },
               supplements: mergeSupplementStatuses(prev.supplements, supplements),
+            };
+            return {
+              ...nextDashboard,
+              hydration: buildFallbackHydration(nextDashboard, nextDashboard.workouts),
             };
           });
           return;
@@ -920,6 +1076,286 @@ export function useDashboard(): UseDashboardReturn {
     [isDemoFallback, trendDays, updateBootstrapState],
   );
 
+  const fetchSavedMeals = useCallback(async () => {
+    if (isDemoFallback) {
+      setSavedMeals((curr) => (curr.length > 0 ? curr : mockSavedMeals));
+      setRecentMeals((curr) => (curr.length > 0 ? curr : mockRecentMeals));
+      return;
+    }
+
+    setIsSavedMealsLoading(true);
+    try {
+      const res = await apiFetchSavedMeals();
+      setSavedMeals(res.savedMeals);
+      setRecentMeals(res.recentMeals);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        return;
+      }
+      setError(err instanceof Error ? err.message : 'Failed to load saved meals');
+    } finally {
+      setIsSavedMealsLoading(false);
+    }
+  }, [isDemoFallback]);
+
+  const createSavedMeal = useCallback(
+    async (input: CreateSavedMealInput): Promise<SavedMealDTO> => {
+      setError(null);
+      try {
+        if (isDemoFallback) {
+          const created: SavedMealDTO = {
+            id: `demo-saved-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            userId: dashboardRef.current?.profile.id ?? 'user-thanawat',
+            name: input.name,
+            defaultMealType: input.defaultMealType,
+            calories: input.calories,
+            proteinG: input.proteinG,
+            carbsG: input.carbsG,
+            fatG: input.fatG,
+            servingNote: input.servingNote ?? null,
+            usageCount: 0,
+            lastUsedAt: null,
+            createdAt: new Date().toISOString(),
+          };
+          setSavedMeals((prev) => [created, ...prev]);
+          return created;
+        }
+
+        const created = await apiCreateSavedMeal(input);
+        setSavedMeals((prev) => [created, ...prev.filter((item) => item.id !== created.id)]);
+        return created;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to save favorite meal';
+        setError(message);
+        throw err;
+      }
+    },
+    [isDemoFallback],
+  );
+
+  const deleteSavedMeal = useCallback(
+    async (id: string) => {
+      setError(null);
+      try {
+        if (isDemoFallback) {
+          setSavedMeals((prev) => prev.filter((item) => item.id !== id));
+          return;
+        }
+
+        await apiDeleteSavedMeal(id);
+        setSavedMeals((prev) => prev.filter((item) => item.id !== id));
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to delete saved meal';
+        setError(message);
+        throw err;
+      }
+    },
+    [isDemoFallback],
+  );
+
+  const logSavedMeal = useCallback(
+    async (savedMealId: string, input?: LogSavedMealInput) => {
+      setSubmittingLog(true);
+      setError(null);
+      try {
+        if (isDemoFallback) {
+          const list = savedMealsRef.current.length > 0 ? savedMealsRef.current : mockSavedMeals;
+          const target = list.find((item) => item.id === savedMealId);
+          if (!target) {
+            throw new Error('Saved meal not found.');
+          }
+          const multiplier = input?.multiplier ?? 1;
+          const mealType = input?.mealType ?? target.defaultMealType;
+          const loggedAt = new Date().toISOString();
+
+          setDashboard((prev) => {
+            if (!prev) return prev;
+            const loggedMeal: NutritionLogDTO = {
+              id: `demo-meal-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              userId: prev.profile.id,
+              loggedDate: input?.loggedDate ?? prev.date,
+              mealType,
+              itemName: multiplier !== 1 ? `${target.name} (${multiplier}x)` : target.name,
+              calories: Math.round(target.calories * multiplier),
+              proteinG: Math.round(target.proteinG * multiplier * 10) / 10,
+              carbsG: Math.round(target.carbsG * multiplier * 10) / 10,
+              fatG: Math.round(target.fatG * multiplier * 10) / 10,
+              supplementKey: null,
+              source: 'MANUAL',
+              loggedAt,
+            };
+            return recalculateFallbackDashboard(prev, [loggedMeal, ...prev.meals], prev.workouts);
+          });
+
+          setSavedMeals((prev) =>
+            prev
+              .map((item) =>
+                item.id === savedMealId
+                  ? { ...item, usageCount: item.usageCount + 1, lastUsedAt: loggedAt }
+                  : item,
+              )
+              .sort((a, b) => b.usageCount - a.usageCount),
+          );
+          return;
+        }
+
+        const res = await apiLogSavedMeal(savedMealId, input);
+        setSavedMeals((prev) =>
+          prev
+            .map((item) => (item.id === res.savedMeal.id ? res.savedMeal : item))
+            .sort((a, b) => b.usageCount - a.usageCount),
+        );
+        const fresh = await fetchDashboardToday();
+        syncDashboardToCache(fresh);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to log saved meal';
+        setError(message);
+        throw err;
+      } finally {
+        setSubmittingLog(false);
+      }
+    },
+    [isDemoFallback, syncDashboardToCache],
+  );
+
+  const copyYesterdayMeals = useCallback(
+    async (input?: CopyYesterdayMealsInput): Promise<CopyYesterdayMealsResponse> => {
+      setSubmittingLog(true);
+      setError(null);
+      try {
+        if (isDemoFallback) {
+          const curr = dashboardRef.current ?? mockDashboardToday;
+          const targetDate = input?.targetDate ?? curr.date;
+          const sourceDate = input?.sourceDate ?? shiftIsoDateUtc(targetDate, -1);
+          const sourceCandidates =
+            recentMealsRef.current.length > 0 ? recentMealsRef.current : mockRecentMeals;
+          const allowedTypes = input?.mealTypes ? new Set(input.mealTypes) : null;
+          const matched = sourceCandidates
+            .filter((item) => !allowedTypes || allowedTypes.has(item.mealType))
+            .slice(0, 2);
+
+          const now = Date.now();
+          const loggedAt = new Date(now).toISOString();
+          const copiedItems: NutritionLogDTO[] = matched.map((item, idx) => ({
+            id: `demo-copy-${now}-${idx}`,
+            userId: curr.profile.id,
+            loggedDate: targetDate,
+            mealType: item.mealType,
+            itemName: item.itemName,
+            calories: item.calories,
+            proteinG: item.proteinG,
+            carbsG: item.carbsG,
+            fatG: item.fatG,
+            supplementKey: null,
+            source: 'MANUAL',
+            loggedAt,
+          }));
+
+          if (copiedItems.length > 0) {
+            setDashboard((prev) =>
+              prev
+                ? recalculateFallbackDashboard(prev, [...copiedItems, ...prev.meals], prev.workouts)
+                : prev,
+            );
+          }
+
+          return {
+            copiedCount: copiedItems.length,
+            sourceDate,
+            targetDate,
+            items: copiedItems,
+          };
+        }
+
+        const res = await apiCopyYesterdayMeals(input);
+        if (res.copiedCount > 0) {
+          const fresh = await fetchDashboardToday();
+          syncDashboardToCache(fresh);
+        }
+        return res;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to copy yesterday's meals";
+        setError(message);
+        throw err;
+      } finally {
+        setSubmittingLog(false);
+      }
+    },
+    [isDemoFallback, syncDashboardToCache],
+  );
+
+  const addWater = useCallback(
+    async (amountMl: number) => {
+      setIsHydrationBusy(true);
+      setError(null);
+      try {
+        if (isDemoFallback) {
+          setDashboard((prev) => {
+            if (!prev) return prev;
+            const newEntry: HydrationEntryDTO = {
+              id: `demo-water-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              amountMl,
+              loggedAt: new Date().toISOString(),
+            };
+            const nextEntries = [newEntry, ...(prev.hydration?.entries ?? [])];
+            return {
+              ...prev,
+              hydration: buildFallbackHydration(prev, prev.workouts, nextEntries),
+            };
+          });
+          return;
+        }
+
+        const summary = await apiAddWaterLog({
+          amountMl,
+          loggedDate: dashboardRef.current?.date,
+        });
+        const curr = dashboardRef.current;
+        if (curr) {
+          syncDashboardToCache({ ...curr, hydration: summary });
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to log water';
+        setError(message);
+      } finally {
+        setIsHydrationBusy(false);
+      }
+    },
+    [isDemoFallback, syncDashboardToCache],
+  );
+
+  const deleteWater = useCallback(
+    async (id: string) => {
+      setIsHydrationBusy(true);
+      setError(null);
+      try {
+        if (isDemoFallback) {
+          setDashboard((prev) => {
+            if (!prev) return prev;
+            const nextEntries = (prev.hydration?.entries ?? []).filter((entry) => entry.id !== id);
+            return {
+              ...prev,
+              hydration: buildFallbackHydration(prev, prev.workouts, nextEntries),
+            };
+          });
+          return;
+        }
+
+        const summary = await apiDeleteWaterLog(id);
+        const curr = dashboardRef.current;
+        if (curr) {
+          syncDashboardToCache({ ...curr, hydration: summary });
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to remove water log';
+        setError(message);
+      } finally {
+        setIsHydrationBusy(false);
+      }
+    },
+    [isDemoFallback, syncDashboardToCache],
+  );
+
   return {
     dashboard,
     trends,
@@ -932,11 +1368,16 @@ export function useDashboard(): UseDashboardReturn {
     isDemoFallback,
     togglingSupplementKey,
     submittingLog,
+    isHydrationBusy,
+    savedMeals,
+    recentMeals,
+    isSavedMealsLoading,
     refresh,
     refreshSyncStatus,
     reset,
     toggleSupplement,
     logMeal,
+    updateMeal,
     logMealsBatch,
     removeMeal,
     logWorkout,
@@ -944,5 +1385,12 @@ export function useDashboard(): UseDashboardReturn {
     logBodyMetric,
     saveSupplementStack,
     saveProfileSettings,
+    fetchSavedMeals,
+    createSavedMeal,
+    deleteSavedMeal,
+    logSavedMeal,
+    copyYesterdayMeals,
+    addWater,
+    deleteWater,
   };
 }

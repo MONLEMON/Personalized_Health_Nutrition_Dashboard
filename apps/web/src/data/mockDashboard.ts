@@ -3,6 +3,8 @@ import type {
   BodyTrendPoint,
   DashboardTodayResponse,
   MetricsTrendsResponse,
+  RecentMealSuggestionDTO,
+  SavedMealDTO,
 } from '@health-dash/shared';
 
 function formatLocalDate(offsetDays = 0): string {
@@ -228,7 +230,114 @@ export const mockDashboardToday: DashboardTodayResponse = {
       taken: false,
     },
   ],
+  hydration: {
+    date: TODAY,
+    consumedMl: 1750,
+    targetMl: 3350,
+    remainingMl: 1600,
+    percentage: 52,
+    breakdown: {
+      baseMl: 2600,
+      workoutBonusMl: 250,
+      creatineBonusMl: 500,
+    },
+    entries: [
+      {
+        id: 'water-3',
+        amountMl: 500,
+        loggedAt: `${TODAY}T13:30:00.000Z`,
+      },
+      {
+        id: 'water-2',
+        amountMl: 750,
+        loggedAt: `${TODAY}T09:15:00.000Z`,
+      },
+      {
+        id: 'water-1',
+        amountMl: 500,
+        loggedAt: `${TODAY}T07:05:00.000Z`,
+      },
+    ],
+  },
 };
+
+export const mockSavedMeals: SavedMealDTO[] = [
+  {
+    id: 'saved-1',
+    userId: 'user-thanawat',
+    name: 'Grilled Chicken Riceberry Bowl',
+    defaultMealType: 'lunch',
+    calories: 780,
+    proteinG: 54,
+    carbsG: 92,
+    fatG: 20,
+    servingNote: '180g chicken breast + 180g riceberry',
+    usageCount: 12,
+    lastUsedAt: `${TODAY}T12:45:00.000Z`,
+    createdAt: `${formatLocalDate(-21)}T08:00:00.000Z`,
+  },
+  {
+    id: 'saved-2',
+    userId: 'user-thanawat',
+    name: 'Whey Isolate & Banana Shake',
+    defaultMealType: 'snack',
+    calories: 260,
+    proteinG: 28,
+    carbsG: 30,
+    fatG: 3,
+    servingNote: '1 scoop isolate + 1 medium banana',
+    usageCount: 9,
+    lastUsedAt: `${formatLocalDate(-1)}T16:00:00.000Z`,
+    createdAt: `${formatLocalDate(-18)}T08:00:00.000Z`,
+  },
+  {
+    id: 'saved-3',
+    userId: 'user-thanawat',
+    name: 'Egg Whites, Oats & Blueberries',
+    defaultMealType: 'breakfast',
+    calories: 520,
+    proteinG: 38,
+    carbsG: 64,
+    fatG: 12,
+    servingNote: '60g rolled oats + 200ml egg whites',
+    usageCount: 7,
+    lastUsedAt: `${TODAY}T09:15:00.000Z`,
+    createdAt: `${formatLocalDate(-14)}T08:00:00.000Z`,
+  },
+];
+
+export const mockRecentMeals: RecentMealSuggestionDTO[] = [
+  {
+    itemName: 'ข้าวสวย 200g + อกไก่ย่าง + ไข่ต้ม 2 ฟอง',
+    mealType: 'dinner',
+    calories: 585,
+    proteinG: 51,
+    carbsG: 62,
+    fatG: 14,
+    lastLoggedDate: formatLocalDate(-1),
+    logCount: 4,
+  },
+  {
+    itemName: 'Salmon & Avocado Poke Bowl',
+    mealType: 'dinner',
+    calories: 640,
+    proteinG: 42,
+    carbsG: 58,
+    fatG: 26,
+    lastLoggedDate: formatLocalDate(-1),
+    logCount: 2,
+  },
+  {
+    itemName: 'Greek Yogurt & Mixed Berries',
+    mealType: 'snack',
+    calories: 210,
+    proteinG: 20,
+    carbsG: 22,
+    fatG: 4,
+    lastLoggedDate: formatLocalDate(-2),
+    logCount: 3,
+  },
+];
 
 function round1(val: number): number {
   return Math.round(val * 10) / 10;

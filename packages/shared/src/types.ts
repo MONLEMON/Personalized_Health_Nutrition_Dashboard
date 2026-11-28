@@ -179,6 +179,7 @@ export interface DashboardTodayResponse {
   meals: NutritionLogDTO[];
   supplements: SupplementStatusDTO[];
   weeklyBudget?: WeeklyBudgetSummaryDTO;
+  hydration?: WaterLogSummaryDTO;
 }
 
 export interface BodyTrendPoint {
@@ -255,6 +256,7 @@ export interface CalendarDaySummaryDTO {
   bodyFatPct: number | null;
   sleepHours: number | null;
   restingHr: number | null;
+  waterMl?: number;
 }
 
 export interface MonthlyCalendarSummaryDTO {
@@ -366,4 +368,69 @@ export interface WeeklyCoachStatusResponse {
 export interface ApplyWeeklyCoachResponse {
   report: WeeklyCoachReportDTO;
   me: MeResponseDTO;
+}
+
+export type LoggableMealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
+
+export interface SavedMealDTO {
+  id: string;
+  userId: string;
+  name: string;
+  defaultMealType: LoggableMealType;
+  calories: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+  servingNote: string | null;
+  usageCount: number;
+  lastUsedAt: string | null;
+  createdAt: string;
+}
+
+export interface RecentMealSuggestionDTO {
+  itemName: string;
+  mealType: LoggableMealType;
+  calories: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+  lastLoggedDate: string;
+  logCount: number;
+}
+
+export interface SavedMealsListResponse {
+  savedMeals: SavedMealDTO[];
+  recentMeals: RecentMealSuggestionDTO[];
+}
+
+export interface LogSavedMealResponse {
+  meal: NutritionLogDTO;
+  savedMeal: SavedMealDTO;
+}
+
+export interface CopyYesterdayMealsResponse {
+  copiedCount: number;
+  sourceDate: string;
+  targetDate: string;
+  items: NutritionLogDTO[];
+}
+
+export interface HydrationEntryDTO {
+  id: string;
+  amountMl: number;
+  loggedAt: string;
+}
+
+export interface WaterLogSummaryDTO {
+  date: string;
+  consumedMl: number;
+  targetMl: number;
+  remainingMl: number;
+  percentage: number;
+  breakdown: {
+    baseMl: number;
+    workoutBonusMl: number;
+    creatineBonusMl: number;
+  };
+  entries: HydrationEntryDTO[];
 }

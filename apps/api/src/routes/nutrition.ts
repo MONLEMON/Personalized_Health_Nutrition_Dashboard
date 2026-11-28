@@ -1,10 +1,16 @@
-import { Hono, type MiddlewareHandler } from 'hono';
+import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import {
+  CopyYesterdayMealsSchema,
   CreateBatchNutritionLogsSchema,
+  CreateSavedMealSchema,
+  HydrationQuerySchema,
+  LogSavedMealSchema,
   createNutritionLogSchema,
   toggleSupplementSchema,
+  updateNutritionLogSchema,
   type CreateBatchNutritionLogsInput,
 } from '@health-dash/shared';
+import { z, type ZodTypeDef } from 'zod';
 import { getRepository, type HealthRepository } from '../db/repository';
 import { createAuthMiddleware, type AuthAppEnv } from '../middleware/auth';
 import {
@@ -15,6 +21,40 @@ import {
   type ParseNutritionInput,
 } from '../services/aiNutrition';
 import { validateJsonBody } from './validation';
+
+async function validateOptionalJsonBody<T>(
+  c: Context,
+  schema: z.ZodType<T, ZodTypeDef, unknown>,
+): Promise<{ ok: true; data: T } | { ok: false; response: Response }> {
+  const rawText = await c.req.text();
+  let rawBody: unknown = {};
+  if (rawText.trim() !== '') {
+    try {
+      rawBody = JSON.parse(rawText);
+    } catch {
+      return {
+        ok: false,
+        response: c.json({ error: 'Invalid JSON request body' }, 400),
+      };
+    }
+  }
+
+  const parsed = schema.safeParse(rawBody);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      response: c.json(
+        {
+          error: 'Validation failed',
+          details: parsed.error.flatten(),
+        },
+        400,
+      ),
+    };
+  }
+
+  return { ok: true, data: parsed.data };
+}
 
 export function createNutritionRoutes(
   resolveRepo: () => HealthRepository = getRepository,
@@ -122,6 +162,75 @@ export function createNutritionRoutes(
     );
   });
 
+  router.get('/saved', async (c) => {
+    const rawDate = c.req.query('date');
+    const parsed = HydrationQuerySchema.safeParse(
+      rawDate === undefined ? {} : { date: rawDate },
+    );
+    if (!parsed.success) {
+      return c.json(
+        {
+          error: 'Validation failed',
+          details: parsed.error.flatten(),
+        },
+        400,
+      );
+    }
+
+    const result = await resolveRepo().listSavedAndRecentMeals(
+      c.get('userId'),
+      parsed.data.date,
+    );
+    return c.json(result, 200);
+  });
+
+  router.post('/saved', async (c) => {
+    const validated = await validateJsonBody(c, CreateSavedMealSchema);
+    if (!validated.ok) return validated.response;
+
+    const created = await resolveRepo().createSavedMeal(
+      c.get('userId'),
+      validated.data,
+    );
+    return c.json(created, 201);
+  });
+
+  router.delete('/saved/:id', async (c) => {
+    const id = c.req.param('id');
+    const deleted = await resolveRepo().deleteSavedMeal(c.get('userId'), id);
+    if (!deleted) {
+      return c.json({ error: 'Saved meal not found' }, 404);
+    }
+    return c.json({ deleted: true, id }, 200);
+  });
+
+  router.post('/saved/:id/log', async (c) => {
+    const validated = await validateOptionalJsonBody(c, LogSavedMealSchema);
+    if (!validated.ok) return validated.response;
+
+    const id = c.req.param('id');
+    const logged = await resolveRepo().logSavedMeal(
+      c.get('userId'),
+      id,
+      validated.data,
+    );
+    if (!logged) {
+      return c.json({ error: 'Saved meal not found' }, 404);
+    }
+    return c.json(logged, 201);
+  });
+
+  router.post('/copy-yesterday', async (c) => {
+    const validated = await validateOptionalJsonBody(c, CopyYesterdayMealsSchema);
+    if (!validated.ok) return validated.response;
+
+    const result = await resolveRepo().copyYesterdayMeals(
+      c.get('userId'),
+      validated.data,
+    );
+    return c.json(result, result.copiedCount > 0 ? 201 : 200);
+  });
+
   router.post('/', async (c) => {
     const validated = await validateJsonBody(c, createNutritionLogSchema);
     if (!validated.ok) return validated.response;
@@ -131,6 +240,22 @@ export function createNutritionRoutes(
       validated.data,
     );
     return c.json(created, 201);
+  });
+
+  router.patch('/:id', async (c) => {
+    const validated = await validateJsonBody(c, updateNutritionLogSchema);
+    if (!validated.ok) return validated.response;
+
+    const id = c.req.param('id');
+    const updated = await resolveRepo().updateNutritionLog(
+      c.get('userId'),
+      id,
+      validated.data,
+    );
+    if (!updated) {
+      return c.json({ error: 'Nutrition log not found' }, 404);
+    }
+    return c.json(updated, 200);
   });
 
   router.delete('/:id', async (c) => {

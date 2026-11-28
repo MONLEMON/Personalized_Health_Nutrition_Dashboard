@@ -1,26 +1,40 @@
 import {
   CreateBatchNutritionLogsSchema,
+  CreateSavedMealSchema,
   createNutritionLogSchema,
   createWorkoutLogSchema,
+  updateNutritionLogSchema,
   type BatchNutritionLogItemInput,
+  type CopyYesterdayMealsResponse,
   type CreateBatchNutritionLogsInput,
   type CreateNutritionLogInput,
+  type CreateSavedMealInput,
   type CreateWorkoutLogInput,
+  type LogSavedMealInput,
+  type LoggableMealType,
   type NutritionConfidence,
+  type NutritionLogDTO,
   type ParsedFoodItem,
+  type RecentMealSuggestionDTO,
+  type SavedMealDTO,
+  type UpdateNutritionLogInput,
   type WorkoutCategory,
   type WorkoutIntensity,
 } from '@health-dash/shared';
 import {
   AlertCircle,
   ArrowLeft,
+  Bookmark,
   Camera,
   Check,
+  Clock,
+  Copy,
   Dumbbell,
   Loader2,
   Plus,
   RotateCcw,
   Sparkles,
+  Star,
   Trash2,
   Utensils,
   X,
@@ -38,15 +52,25 @@ import {
 import { ApiError, parseNutritionWithAI } from '../lib/api';
 import { resizeImageForUpload, type ResizedImageResult } from '../lib/imageResize';
 
-export type QuickLogTab = 'ai' | 'meal' | 'workout';
+export type QuickLogTab = 'ai' | 'saved' | 'meal' | 'workout';
 
 export interface QuickLogModalProps {
   isOpen: boolean;
   initialTab?: QuickLogTab;
+  editingMeal?: NutritionLogDTO | null;
   onClose: () => void;
   onSubmitMeal: (input: CreateNutritionLogInput) => Promise<void>;
+  onUpdateMeal?: (id: string, input: UpdateNutritionLogInput) => Promise<void>;
   onSubmitMealsBatch?: (input: CreateBatchNutritionLogsInput) => Promise<void>;
   onSubmitWorkout: (input: CreateWorkoutLogInput) => Promise<void>;
+  savedMeals?: SavedMealDTO[];
+  recentMeals?: RecentMealSuggestionDTO[];
+  isSavedMealsLoading?: boolean;
+  onLoadSavedMeals?: () => void | Promise<void>;
+  onCreateSavedMeal?: (input: CreateSavedMealInput) => Promise<unknown>;
+  onDeleteSavedMeal?: (id: string) => Promise<void>;
+  onLogSavedMeal?: (id: string, input?: LogSavedMealInput) => Promise<void>;
+  onCopyYesterday?: () => Promise<CopyYesterdayMealsResponse>;
   isSubmitting?: boolean;
 }
 
@@ -69,6 +93,13 @@ interface DraftNutritionItem {
   carbsG: string;
   fatG: string;
   confidence: NutritionConfidence;
+}
+
+interface MacroValuesForm {
+  calories: string;
+  proteinG: string;
+  carbsG: string;
+  fatG: string;
 }
 
 const AI_SAMPLE_PROMPTS: string[] = [
@@ -99,6 +130,27 @@ const CONFIDENCE_BADGE: Record<NutritionConfidence, { label: string; classes: st
     classes: 'border-[#FF5C6C]/35 bg-[#FF5C6C]/12 text-[#FF5C6C]',
   },
 };
+
+const MEAL_TYPE_BADGE: Record<LoggableMealType, { label: string; classes: string }> = {
+  breakfast: {
+    label: 'Breakfast',
+    classes: 'border-[#FFB020]/30 bg-[#FFB020]/10 text-[#FFB020]',
+  },
+  lunch: {
+    label: 'Lunch',
+    classes: 'border-[#2EE6A6]/30 bg-[#2EE6A6]/10 text-[#2EE6A6]',
+  },
+  dinner: {
+    label: 'Dinner',
+    classes: 'border-[#38BDF8]/30 bg-[#38BDF8]/10 text-[#38BDF8]',
+  },
+  snack: {
+    label: 'Snack',
+    classes: 'border-purple-400/30 bg-purple-400/10 text-purple-300',
+  },
+};
+
+const SAVED_MULTIPLIERS = [0.5, 1, 1.5, 2] as const;
 
 const MEAL_PRESETS: MealPreset[] = [
   {
@@ -192,10 +244,20 @@ const WORKOUT_PRESETS: WorkoutPreset[] = [
 
 const DEFAULT_MEAL_FORM = {
   itemName: '',
-  mealType: 'lunch' as CreateNutritionLogInput['mealType'],
+  mealType: 'lunch' as LoggableMealType,
   calories: '450',
   proteinG: '35',
   carbsG: '45',
+  fatG: '12',
+};
+
+const DEFAULT_CUSTOM_FAVORITE_FORM = {
+  name: '',
+  defaultMealType: 'lunch' as LoggableMealType,
+  servingNote: '',
+  calories: '400',
+  proteinG: '30',
+  carbsG: '40',
   fatG: '12',
 };
 
@@ -206,6 +268,18 @@ const DEFAULT_WORKOUT_FORM = {
   activeCalories: '280',
   intensity: 'moderate' as WorkoutIntensity,
 };
+
+const MACRO_FIELD_META: Array<{
+  key: keyof MacroValuesForm;
+  label: string;
+  max: number;
+  labelClass: string;
+}> = [
+  { key: 'calories', label: 'Calories', max: 10000, labelClass: 'text-slate-300' },
+  { key: 'proteinG', label: 'Protein (g)', max: 1000, labelClass: 'text-[#2EE6A6]' },
+  { key: 'carbsG', label: 'Carbs (g)', max: 1500, labelClass: 'text-[#38BDF8]' },
+  { key: 'fatG', label: 'Fat (g)', max: 1000, labelClass: 'text-[#FBBF24]' },
+];
 
 function formatFileSizeKb(bytes: number): string {
   if (bytes < 1024) {
@@ -250,22 +324,76 @@ function parseNumericDraftField(raw: string): number {
   return Number(trimmed);
 }
 
+function scaleMacro1Decimal(value: number, multiplier: number): number {
+  return Math.round(value * multiplier * 10) / 10;
+}
+
+function MacroFieldsGrid({
+  values,
+  onChange,
+  inputClasses,
+  compact = false,
+}: {
+  values: MacroValuesForm;
+  onChange: (field: keyof MacroValuesForm, value: string) => void;
+  inputClasses: string;
+  compact?: boolean;
+}) {
+  return (
+    <div className={`grid grid-cols-2 sm:grid-cols-4 ${compact ? 'gap-2' : 'gap-3'}`}>
+      {MACRO_FIELD_META.map((field) => (
+        <div key={field.key} className="min-w-0">
+          <label className={`mb-1 block text-xs font-medium ${field.labelClass}`}>
+            {field.label}
+          </label>
+          <input
+            type="number"
+            inputMode="decimal"
+            min={0}
+            max={field.max}
+            step="any"
+            required
+            value={values[field.key]}
+            onChange={(e) => onChange(field.key, e.target.value)}
+            className={`${inputClasses} tabular-nums`}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function QuickLogModal({
   isOpen,
   initialTab = 'ai',
+  editingMeal = null,
   onClose,
   onSubmitMeal,
+  onUpdateMeal,
   onSubmitMealsBatch,
   onSubmitWorkout,
+  savedMeals = [],
+  recentMeals = [],
+  isSavedMealsLoading = false,
+  onLoadSavedMeals,
+  onCreateSavedMeal,
+  onDeleteSavedMeal,
+  onLogSavedMeal,
+  onCopyYesterday,
   isSubmitting = false,
 }: QuickLogModalProps) {
   const fileInputId = useId();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const previewUrlRef = useRef<string | null>(null);
   const analysisSeqRef = useRef(0);
+  const onLoadSavedMealsRef = useRef(onLoadSavedMeals);
+  onLoadSavedMealsRef.current = onLoadSavedMeals;
+
+  const isEditingMeal = Boolean(editingMeal);
 
   const [activeTab, setActiveTab] = useState<QuickLogTab>(initialTab);
   const [mealForm, setMealForm] = useState(DEFAULT_MEAL_FORM);
+  const [saveToFavorites, setSaveToFavorites] = useState(false);
   const [workoutForm, setWorkoutForm] = useState(DEFAULT_WORKOUT_FORM);
 
   // AI Smart Log states
@@ -276,6 +404,21 @@ export function QuickLogModal({
   const [analyzing, setAnalyzing] = useState(false);
   const [aiMealType, setAiMealType] = useState<BatchNutritionLogItemInput['mealType']>('lunch');
   const [draftItems, setDraftItems] = useState<DraftNutritionItem[]>([]);
+
+  // Saved & Recent states
+  const [multipliers, setMultipliers] = useState<Record<string, number>>({});
+  const [loggingSavedId, setLoggingSavedId] = useState<string | null>(null);
+  const [deletingSavedId, setDeletingSavedId] = useState<string | null>(null);
+  const [loggingRecentKey, setLoggingRecentKey] = useState<string | null>(null);
+  const [promotingRecentKey, setPromotingRecentKey] = useState<string | null>(null);
+  const [copyingYesterday, setCopyingYesterday] = useState(false);
+  const [copyFeedback, setCopyFeedback] = useState<{
+    tone: 'mint' | 'amber';
+    message: string;
+  } | null>(null);
+  const [showAddFavoriteForm, setShowAddFavoriteForm] = useState(false);
+  const [customFavoriteForm, setCustomFavoriteForm] = useState(DEFAULT_CUSTOM_FAVORITE_FORM);
+  const [creatingFavorite, setCreatingFavorite] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
   const [localSubmitting, setLocalSubmitting] = useState(false);
@@ -301,12 +444,38 @@ export function QuickLogModal({
 
   useEffect(() => {
     if (isOpen) {
-      setActiveTab(initialTab);
       setError(null);
+      if (editingMeal) {
+        setActiveTab('meal');
+        setMealForm({
+          itemName: editingMeal.itemName,
+          mealType: editingMeal.mealType === 'supplement' ? 'snack' : editingMeal.mealType,
+          calories: String(editingMeal.calories),
+          proteinG: String(editingMeal.proteinG),
+          carbsG: String(editingMeal.carbsG),
+          fatG: String(editingMeal.fatG),
+        });
+        setSaveToFavorites(false);
+      } else {
+        setActiveTab(initialTab);
+        setMealForm(DEFAULT_MEAL_FORM);
+        setSaveToFavorites(false);
+      }
     } else {
       resetAiFlow();
+      setMealForm(DEFAULT_MEAL_FORM);
+      setSaveToFavorites(false);
+      setCopyFeedback(null);
+      setShowAddFavoriteForm(false);
+      setCustomFavoriteForm(DEFAULT_CUSTOM_FAVORITE_FORM);
     }
-  }, [isOpen, initialTab, resetAiFlow]);
+  }, [isOpen, initialTab, editingMeal, resetAiFlow]);
+
+  useEffect(() => {
+    if (isOpen && !editingMeal && activeTab === 'saved') {
+      void onLoadSavedMealsRef.current?.();
+    }
+  }, [isOpen, editingMeal, activeTab]);
 
   useEffect(() => {
     return () => {
@@ -346,6 +515,10 @@ export function QuickLogModal({
     );
   }, [draftItems]);
 
+  const savedMealNames = useMemo(() => {
+    return new Set(savedMeals.map((item) => item.name.trim().toLowerCase()));
+  }, [savedMeals]);
+
   if (!isOpen) return null;
 
   const busy = isSubmitting || localSubmitting;
@@ -375,7 +548,6 @@ export function QuickLogModal({
 
   const handleImageSelect = async (e: ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
-    // Reset input so choosing the same image again still triggers onChange
     e.target.value = '';
     if (!selectedFile) return;
 
@@ -508,9 +680,168 @@ export function QuickLogModal({
     }
   };
 
+  const handleCopyYesterdayClick = async () => {
+    if (!onCopyYesterday || copyingYesterday) return;
+    setError(null);
+    setCopyFeedback(null);
+    setCopyingYesterday(true);
+    try {
+      const res = await onCopyYesterday();
+      if (res.copiedCount === 0) {
+        setCopyFeedback({
+          tone: 'amber',
+          message: `No meals found logged on ${res.sourceDate}.`,
+        });
+      } else {
+        setCopyFeedback({
+          tone: 'mint',
+          message: `Copied ${res.copiedCount} ${res.copiedCount === 1 ? 'meal' : 'meals'} from ${res.sourceDate} into today!`,
+        });
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to copy yesterday's meals.");
+    } finally {
+      setCopyingYesterday(false);
+    }
+  };
+
+  const handleLogSavedClick = async (savedMeal: SavedMealDTO) => {
+    if (!onLogSavedMeal) return;
+    const multiplier = multipliers[savedMeal.id] ?? 1;
+    setError(null);
+    setLoggingSavedId(savedMeal.id);
+    try {
+      await onLogSavedMeal(savedMeal.id, { multiplier });
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to log saved meal.');
+    } finally {
+      setLoggingSavedId(null);
+    }
+  };
+
+  const handleDeleteSavedClick = async (id: string) => {
+    if (!onDeleteSavedMeal) return;
+    setError(null);
+    setDeletingSavedId(id);
+    try {
+      await onDeleteSavedMeal(id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete saved meal.');
+    } finally {
+      setDeletingSavedId(null);
+    }
+  };
+
+  const handleCreateCustomFavoriteSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!onCreateSavedMeal) return;
+    setError(null);
+
+    const parsed = CreateSavedMealSchema.safeParse({
+      name: customFavoriteForm.name,
+      defaultMealType: customFavoriteForm.defaultMealType,
+      calories: customFavoriteForm.calories,
+      proteinG: customFavoriteForm.proteinG,
+      carbsG: customFavoriteForm.carbsG,
+      fatG: customFavoriteForm.fatG,
+      servingNote: customFavoriteForm.servingNote.trim() || null,
+    });
+
+    if (!parsed.success) {
+      setError(parsed.error.issues[0]?.message ?? 'Please check custom favorite fields.');
+      return;
+    }
+
+    setCreatingFavorite(true);
+    try {
+      await onCreateSavedMeal(parsed.data);
+      setCustomFavoriteForm(DEFAULT_CUSTOM_FAVORITE_FORM);
+      setShowAddFavoriteForm(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create favorite meal.');
+    } finally {
+      setCreatingFavorite(false);
+    }
+  };
+
+  const handlePromoteRecentClick = async (recent: RecentMealSuggestionDTO, key: string) => {
+    if (!onCreateSavedMeal) return;
+    setError(null);
+    setPromotingRecentKey(key);
+    try {
+      await onCreateSavedMeal({
+        name: recent.itemName,
+        defaultMealType: recent.mealType,
+        calories: recent.calories,
+        proteinG: recent.proteinG,
+        carbsG: recent.carbsG,
+        fatG: recent.fatG,
+        servingNote: null,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to promote meal to favorites.');
+    } finally {
+      setPromotingRecentKey(null);
+    }
+  };
+
+  const handleLogRecentClick = async (recent: RecentMealSuggestionDTO, key: string) => {
+    setError(null);
+    setLoggingRecentKey(key);
+    try {
+      await onSubmitMeal({
+        itemName: recent.itemName,
+        mealType: recent.mealType,
+        calories: recent.calories,
+        proteinG: recent.proteinG,
+        carbsG: recent.carbsG,
+        fatG: recent.fatG,
+      });
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to log recent meal.');
+    } finally {
+      setLoggingRecentKey(null);
+    }
+  };
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    if (isEditingMeal && editingMeal) {
+      if (!onUpdateMeal) {
+        setError('Meal editing is unavailable right now.');
+        return;
+      }
+
+      const parsed = updateNutritionLogSchema.safeParse({
+        itemName: mealForm.itemName,
+        mealType: mealForm.mealType,
+        calories: mealForm.calories,
+        proteinG: mealForm.proteinG,
+        carbsG: mealForm.carbsG,
+        fatG: mealForm.fatG,
+      });
+
+      if (!parsed.success) {
+        setError(parsed.error.issues[0]?.message ?? 'Please check meal input fields.');
+        return;
+      }
+
+      try {
+        setLocalSubmitting(true);
+        await onUpdateMeal(editingMeal.id, parsed.data);
+        setMealForm(DEFAULT_MEAL_FORM);
+        onClose();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to update meal.');
+      } finally {
+        setLocalSubmitting(false);
+      }
+      return;
+    }
 
     if (activeTab === 'meal') {
       const parsed = createNutritionLogSchema.safeParse({
@@ -530,7 +861,23 @@ export function QuickLogModal({
       try {
         setLocalSubmitting(true);
         await onSubmitMeal(parsed.data);
+        if (saveToFavorites && onCreateSavedMeal) {
+          try {
+            await onCreateSavedMeal({
+              name: parsed.data.itemName,
+              defaultMealType: parsed.data.mealType,
+              calories: parsed.data.calories,
+              proteinG: parsed.data.proteinG,
+              carbsG: parsed.data.carbsG,
+              fatG: parsed.data.fatG,
+              servingNote: null,
+            });
+          } catch {
+            // Meal was already logged cleanly; keep non-blocking
+          }
+        }
         setMealForm(DEFAULT_MEAL_FORM);
+        setSaveToFavorites(false);
         onClose();
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to log meal.');
@@ -579,7 +926,7 @@ export function QuickLogModal({
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-[#FF5C6C]" />
           <div className="min-w-0 flex-1 space-y-2">
             <p className="break-words leading-relaxed">{error}</p>
-            {activeTab === 'ai' && (
+            {activeTab === 'ai' && !isEditingMeal && (
               <div className="flex flex-wrap items-center gap-2">
                 {aiStep === 'input' ? (
                   <button
@@ -639,10 +986,12 @@ export function QuickLogModal({
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0 flex-1">
             <h2 id="quick-log-modal-title" className="text-lg font-semibold text-white">
-              Quick Log
+              {isEditingMeal ? 'Edit Meal' : 'Quick Log'}
             </h2>
             <p className="text-xs text-slate-400">
-              Instant sync with Dynamic TDEE, Macro Rings &amp; Readiness
+              {isEditingMeal
+                ? 'Update meal details, calories, or macros'
+                : 'Instant sync with Dynamic TDEE, Macro Rings & Readiness'}
             </p>
           </div>
           <button
@@ -656,61 +1005,78 @@ export function QuickLogModal({
           </button>
         </div>
 
-        {/* 3-Way Segmented Tab Switcher */}
-        <div className="mt-4 grid grid-cols-3 gap-1.5 rounded-2xl border border-white/5 bg-[#0A0C10]/80 p-1">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => {
-              setActiveTab('ai');
-              setError(null);
-            }}
-            className={`flex min-h-[44px] min-w-0 items-center justify-center gap-1.5 rounded-xl px-1.5 text-[11px] font-semibold whitespace-nowrap transition sm:text-xs ${
-              activeTab === 'ai'
-                ? 'bg-gradient-to-r from-[#2EE6A6] to-[#38BDF8] text-[#081016] shadow'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <Sparkles className="h-3.5 w-3.5 shrink-0" />
-            <span className="sm:hidden">AI Log</span>
-            <span className="hidden sm:inline">AI Smart Log</span>
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => {
-              setActiveTab('meal');
-              setError(null);
-            }}
-            className={`flex min-h-[44px] min-w-0 items-center justify-center gap-1.5 rounded-xl px-1.5 text-[11px] font-semibold whitespace-nowrap transition sm:text-xs ${
-              activeTab === 'meal'
-                ? 'bg-[#2EE6A6] text-[#081016] shadow'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <Utensils className="h-3.5 w-3.5 shrink-0" />
-            <span>Manual</span>
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => {
-              setActiveTab('workout');
-              setError(null);
-            }}
-            className={`flex min-h-[44px] min-w-0 items-center justify-center gap-1.5 rounded-xl px-1.5 text-[11px] font-semibold whitespace-nowrap transition sm:text-xs ${
-              activeTab === 'workout'
-                ? 'bg-[#FFB020] text-[#081016] shadow'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <Dumbbell className="h-3.5 w-3.5 shrink-0" />
-            <span>Workout</span>
-          </button>
-        </div>
+        {/* 4-Way Segmented Tab Switcher (hidden when editing an existing meal) */}
+        {!isEditingMeal ? (
+          <div className="mt-4 grid grid-cols-4 gap-1 rounded-2xl border border-white/5 bg-[#0A0C10]/80 p-1">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                setActiveTab('ai');
+                setError(null);
+              }}
+              className={`flex min-h-[44px] min-w-0 items-center justify-center gap-1 rounded-xl px-1 text-[11px] font-semibold whitespace-nowrap transition sm:gap-1.5 sm:px-2 sm:text-xs ${
+                activeTab === 'ai'
+                  ? 'bg-gradient-to-r from-[#2EE6A6] to-[#38BDF8] text-[#081016] shadow'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Sparkles className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">AI Log</span>
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                setActiveTab('saved');
+                setError(null);
+              }}
+              className={`flex min-h-[44px] min-w-0 items-center justify-center gap-1 rounded-xl px-1 text-[11px] font-semibold whitespace-nowrap transition sm:gap-1.5 sm:px-2 sm:text-xs ${
+                activeTab === 'saved'
+                  ? 'bg-[#38BDF8] text-[#081016] shadow'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Bookmark className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">Saved</span>
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                setActiveTab('meal');
+                setError(null);
+              }}
+              className={`flex min-h-[44px] min-w-0 items-center justify-center gap-1 rounded-xl px-1 text-[11px] font-semibold whitespace-nowrap transition sm:gap-1.5 sm:px-2 sm:text-xs ${
+                activeTab === 'meal'
+                  ? 'bg-[#2EE6A6] text-[#081016] shadow'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Utensils className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">Manual</span>
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                setActiveTab('workout');
+                setError(null);
+              }}
+              className={`flex min-h-[44px] min-w-0 items-center justify-center gap-1 rounded-xl px-1 text-[11px] font-semibold whitespace-nowrap transition sm:gap-1.5 sm:px-2 sm:text-xs ${
+                activeTab === 'workout'
+                  ? 'bg-[#FFB020] text-[#081016] shadow'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Dumbbell className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">Workout</span>
+            </button>
+          </div>
+        ) : null}
 
         {/* TAB 1: AI SMART LOG */}
-        {activeTab === 'ai' ? (
+        {!isEditingMeal && activeTab === 'ai' ? (
           <div className="mt-4 min-w-0 space-y-4">
             {analyzing ? (
               <div className="space-y-3" aria-live="polite" aria-busy="true">
@@ -1019,7 +1385,7 @@ export function QuickLogModal({
                                 inputMode="decimal"
                                 min={0}
                                 max={10000}
-                                step="1"
+                                step="any"
                                 required
                                 value={item.calories}
                                 onChange={(e) =>
@@ -1037,7 +1403,7 @@ export function QuickLogModal({
                                 inputMode="decimal"
                                 min={0}
                                 max={1000}
-                                step="0.5"
+                                step="any"
                                 required
                                 value={item.proteinG}
                                 onChange={(e) =>
@@ -1055,7 +1421,7 @@ export function QuickLogModal({
                                 inputMode="decimal"
                                 min={0}
                                 max={1500}
-                                step="0.5"
+                                step="any"
                                 required
                                 value={item.carbsG}
                                 onChange={(e) =>
@@ -1073,7 +1439,7 @@ export function QuickLogModal({
                                 inputMode="decimal"
                                 min={0}
                                 max={1000}
-                                step="0.5"
+                                step="any"
                                 required
                                 value={item.fatG}
                                 onChange={(e) =>
@@ -1125,43 +1491,437 @@ export function QuickLogModal({
               </form>
             )}
           </div>
-        ) : (
-          /* TAB 2 & TAB 3: MANUAL MEAL & WORKOUT */
-          <>
-            {/* 1-Click Quick-Fill Presets */}
-            <div className="mt-4 min-w-0">
-              <div className="mb-2 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-slate-400">
-                <Sparkles className="h-3 w-3 shrink-0 text-[#2EE6A6]" />
-                <span>1-Click Presets</span>
+        ) : !isEditingMeal && activeTab === 'saved' ? (
+          /* TAB 2: SAVED FAVORITES, RECENT 14-DAY MEALS & COPY YESTERDAY */
+          <div className="mt-4 min-w-0 space-y-4">
+            {/* 1-click Copy Yesterday Banner */}
+            {onCopyYesterday ? (
+              <div className="min-w-0 space-y-2 rounded-2xl border border-[#38BDF8]/25 bg-[#38BDF8]/[0.07] p-3">
+                <div className="flex min-w-0 flex-wrap items-center justify-between gap-2.5">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold text-white">Repeat Yesterday&apos;s Meals</p>
+                    <p className="text-[11px] text-slate-400">
+                      1-click copy all non-supplement meals from yesterday into today
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={busy || copyingYesterday}
+                    onClick={() => void handleCopyYesterdayClick()}
+                    className="inline-flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-xl bg-[#38BDF8] px-3.5 py-2 text-xs font-bold text-[#081016] transition hover:brightness-110 disabled:cursor-wait disabled:opacity-60"
+                  >
+                    {copyingYesterday ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Copy className="h-3.5 w-3.5" />
+                    )}
+                    <span>Copy Yesterday&apos;s Meals</span>
+                  </button>
+                </div>
+
+                {copyFeedback ? (
+                  <div
+                    role="status"
+                    className={`rounded-xl border px-3 py-2 text-xs font-medium ${
+                      copyFeedback.tone === 'mint'
+                        ? 'border-[#2EE6A6]/35 bg-[#2EE6A6]/12 text-[#2EE6A6]'
+                        : 'border-[#FFB020]/35 bg-[#FFB020]/12 text-[#FFB020]'
+                    }`}
+                  >
+                    {copyFeedback.message}
+                  </div>
+                ) : null}
               </div>
-              <div className="flex flex-wrap gap-2">
-                {activeTab === 'meal'
-                  ? MEAL_PRESETS.map((preset) => (
-                      <button
-                        key={preset.label}
-                        type="button"
-                        onClick={() => applyMealPreset(preset)}
-                        className="min-h-[40px] max-w-full rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-2 text-xs font-medium text-slate-200 transition hover:border-[#2EE6A6]/40 hover:bg-[#2EE6A6]/10 hover:text-[#2EE6A6] sm:min-h-0 sm:px-3 sm:py-1.5"
-                      >
-                        {preset.label}
-                      </button>
-                    ))
-                  : WORKOUT_PRESETS.map((preset) => (
-                      <button
-                        key={preset.label}
-                        type="button"
-                        onClick={() => applyWorkoutPreset(preset)}
-                        className="min-h-[40px] max-w-full rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-2 text-xs font-medium text-slate-200 transition hover:border-[#FFB020]/40 hover:bg-[#FFB020]/10 hover:text-[#FFB020] sm:min-h-0 sm:px-3 sm:py-1.5"
-                      >
-                        {preset.label}
-                      </button>
-                    ))}
+            ) : null}
+
+            {/* Saved Favorites Header & Toggle */}
+            <div className="min-w-0 space-y-2.5">
+              <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-300">
+                  <Star className="h-3.5 w-3.5 text-[#FFB020]" />
+                  <span>Saved Favorites ({savedMeals.length})</span>
+                </div>
+
+                {onCreateSavedMeal ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setError(null);
+                      setShowAddFavoriteForm((prev) => !prev);
+                    }}
+                    className="inline-flex min-h-[36px] items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-medium text-slate-200 transition hover:border-[#2EE6A6]/40 hover:bg-[#2EE6A6]/10 hover:text-[#2EE6A6]"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>{showAddFavoriteForm ? 'Close Form' : 'Add Custom Favorite'}</span>
+                  </button>
+                ) : null}
               </div>
+
+              {/* Compact Add Custom Favorite Form */}
+              {showAddFavoriteForm && onCreateSavedMeal ? (
+                <form
+                  onSubmit={handleCreateCustomFavoriteSubmit}
+                  className="min-w-0 space-y-3 rounded-2xl border border-[#2EE6A6]/25 bg-[#0F131C]/95 p-3.5"
+                >
+                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+                    <div className="min-w-0 sm:col-span-2">
+                      <label className="mb-1 block text-xs font-medium text-slate-300">
+                        Favorite Name
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. Chicken Breast + Rice 200g"
+                        value={customFavoriteForm.name}
+                        onChange={(e) =>
+                          setCustomFavoriteForm((prev) => ({ ...prev, name: e.target.value }))
+                        }
+                        className={inputClasses}
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <label className="mb-1 block text-xs font-medium text-slate-300">
+                        Default Meal
+                      </label>
+                      <select
+                        value={customFavoriteForm.defaultMealType}
+                        onChange={(e) =>
+                          setCustomFavoriteForm((prev) => ({
+                            ...prev,
+                            defaultMealType: e.target.value as LoggableMealType,
+                          }))
+                        }
+                        className={inputClasses}
+                      >
+                        <option value="breakfast">Breakfast</option>
+                        <option value="lunch">Lunch</option>
+                        <option value="dinner">Dinner</option>
+                        <option value="snack">Snack</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="min-w-0">
+                    <label className="mb-1 block text-xs font-medium text-slate-400">
+                      Serving Note (optional)
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={120}
+                      placeholder="e.g. 1 bowl · 350g cooked"
+                      value={customFavoriteForm.servingNote}
+                      onChange={(e) =>
+                        setCustomFavoriteForm((prev) => ({
+                          ...prev,
+                          servingNote: e.target.value,
+                        }))
+                      }
+                      className={inputClasses}
+                    />
+                  </div>
+
+                  <MacroFieldsGrid
+                    compact
+                    values={customFavoriteForm}
+                    onChange={(field, value) =>
+                      setCustomFavoriteForm((prev) => ({ ...prev, [field]: value }))
+                    }
+                    inputClasses={inputClasses}
+                  />
+
+                  <div className="flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowAddFavoriteForm(false)}
+                      className="min-h-[40px] rounded-xl border border-white/10 px-3.5 py-1.5 text-xs font-medium text-slate-300 hover:bg-white/5"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={creatingFavorite}
+                      className="inline-flex min-h-[40px] items-center gap-1.5 rounded-xl bg-[#2EE6A6] px-4 py-1.5 text-xs font-bold text-[#081016] transition hover:brightness-110 disabled:opacity-60"
+                    >
+                      {creatingFavorite ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Check className="h-3.5 w-3.5" />
+                      )}
+                      <span>Save Favorite</span>
+                    </button>
+                  </div>
+                </form>
+              ) : null}
+
+              {/* Favorites List */}
+              {isSavedMealsLoading && savedMeals.length === 0 ? (
+                <div className="space-y-2">
+                  {[0, 1].map((idx) => (
+                    <div
+                      key={idx}
+                      className="h-24 animate-pulse rounded-2xl border border-white/5 bg-[#0F131C]/80"
+                    />
+                  ))}
+                </div>
+              ) : savedMeals.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-white/10 bg-[#0F131C]/50 px-4 py-5 text-center text-xs text-slate-400">
+                  No saved favorites yet. Tap the bookmark icon on any logged meal or create one above!
+                </div>
+              ) : (
+                <ul className="max-h-[26dvh] space-y-2.5 overflow-y-auto pr-0.5">
+                  {savedMeals.map((meal) => {
+                    const mult = multipliers[meal.id] ?? 1;
+                    const badge = MEAL_TYPE_BADGE[meal.defaultMealType] ?? MEAL_TYPE_BADGE.snack;
+                    const isLogging = loggingSavedId === meal.id;
+                    const isDeleting = deletingSavedId === meal.id;
+
+                    return (
+                      <li
+                        key={meal.id}
+                        className="min-w-0 space-y-2.5 rounded-2xl border border-white/10 bg-[#0F131C]/90 p-3"
+                      >
+                        <div className="flex min-w-0 items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span
+                                className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${badge.classes}`}
+                              >
+                                {badge.label}
+                              </span>
+                              {meal.usageCount > 0 ? (
+                                <span className="tabular-nums text-[10px] text-slate-400">
+                                  Used {meal.usageCount}×
+                                </span>
+                              ) : null}
+                            </div>
+                            <p className="mt-1 break-words text-sm font-semibold text-white">
+                              {meal.name}
+                            </p>
+                            {meal.servingNote ? (
+                              <p className="mt-0.5 truncate text-[11px] text-slate-400">
+                                {meal.servingNote}
+                              </p>
+                            ) : null}
+                          </div>
+
+                          <div className="flex shrink-0 items-center gap-1">
+                            {onLogSavedMeal ? (
+                              <button
+                                type="button"
+                                disabled={busy || isLogging || isDeleting}
+                                onClick={() => void handleLogSavedClick(meal)}
+                                className="inline-flex min-h-[38px] items-center gap-1 rounded-xl bg-[#2EE6A6] px-3 py-1.5 text-xs font-bold text-[#081016] transition hover:brightness-110 disabled:opacity-60"
+                              >
+                                {isLogging ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Plus className="h-3.5 w-3.5" />
+                                )}
+                                <span>Log</span>
+                              </button>
+                            ) : null}
+                            {onDeleteSavedMeal ? (
+                              <button
+                                type="button"
+                                disabled={busy || isLogging || isDeleting}
+                                onClick={() => void handleDeleteSavedClick(meal.id)}
+                                aria-label={`Delete favorite ${meal.name}`}
+                                className="flex min-h-[38px] min-w-[38px] items-center justify-center rounded-xl text-slate-400 transition hover:bg-[#FF5C6C]/15 hover:text-[#FF5C6C] disabled:opacity-50"
+                              >
+                                {isDeleting ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                )}
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        {/* Multiplier + scaled macros */}
+                        <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="tabular-nums text-xs font-bold text-white">
+                              {Math.round(meal.calories * mult)} kcal
+                            </span>
+                            <span className="tabular-nums rounded-md bg-[#2EE6A6]/10 px-1.5 py-0.5 text-[10px] font-medium text-[#2EE6A6]">
+                              P {scaleMacro1Decimal(meal.proteinG, mult)}g
+                            </span>
+                            <span className="tabular-nums rounded-md bg-[#38BDF8]/10 px-1.5 py-0.5 text-[10px] font-medium text-[#38BDF8]">
+                              C {scaleMacro1Decimal(meal.carbsG, mult)}g
+                            </span>
+                            <span className="tabular-nums rounded-md bg-[#FBBF24]/10 px-1.5 py-0.5 text-[10px] font-medium text-[#FBBF24]">
+                              F {scaleMacro1Decimal(meal.fatG, mult)}g
+                            </span>
+                          </div>
+
+                          <div
+                            role="group"
+                            aria-label={`Portion multiplier for ${meal.name}`}
+                            className="flex items-center gap-1 rounded-xl border border-white/10 bg-[#0A0C10]/80 p-0.5"
+                          >
+                            {SAVED_MULTIPLIERS.map((m) => (
+                              <button
+                                key={m}
+                                type="button"
+                                onClick={() =>
+                                  setMultipliers((prev) => ({ ...prev, [meal.id]: m }))
+                                }
+                                className={`min-h-[30px] rounded-lg px-2 text-[11px] font-semibold tabular-nums transition ${
+                                  mult === m
+                                    ? 'bg-[#2EE6A6]/20 text-[#2EE6A6]'
+                                    : 'text-slate-400 hover:text-white'
+                                }`}
+                              >
+                                {m}x
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
             </div>
+
+            {/* Recent 14-Day Meals */}
+            <div className="min-w-0 space-y-2.5 border-t border-white/5 pt-3">
+              <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-300">
+                <Clock className="h-3.5 w-3.5 text-[#38BDF8]" />
+                <span>Recent Meals (14 Days)</span>
+              </div>
+
+              {isSavedMealsLoading && recentMeals.length === 0 ? (
+                <div className="h-20 animate-pulse rounded-2xl border border-white/5 bg-[#0F131C]/80" />
+              ) : recentMeals.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-white/10 bg-[#0F131C]/50 px-4 py-4 text-center text-xs text-slate-400">
+                  No recent meals logged in the past 14 days yet.
+                </div>
+              ) : (
+                <ul className="max-h-[24dvh] space-y-2 overflow-y-auto pr-0.5">
+                  {recentMeals.map((recent) => {
+                    const key = `${recent.itemName.toLowerCase()}::${recent.mealType}`;
+                    const badge = MEAL_TYPE_BADGE[recent.mealType] ?? MEAL_TYPE_BADGE.snack;
+                    const alreadySaved = savedMealNames.has(recent.itemName.trim().toLowerCase());
+                    const isPromoting = promotingRecentKey === key;
+                    const isLogging = loggingRecentKey === key;
+
+                    return (
+                      <li
+                        key={key}
+                        className="flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/5 bg-[#0F131C]/80 p-3"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span
+                              className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${badge.classes}`}
+                            >
+                              {badge.label}
+                            </span>
+                            <span className="tabular-nums text-[10px] text-slate-400">
+                              {recent.logCount}× · {recent.lastLoggedDate}
+                            </span>
+                          </div>
+                          <p className="mt-1 break-words text-sm font-medium text-white">
+                            {recent.itemName}
+                          </p>
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] tabular-nums">
+                            <span className="font-semibold text-white">
+                              {Math.round(recent.calories)} kcal
+                            </span>
+                            <span className="text-[#2EE6A6]">P {Math.round(recent.proteinG)}g</span>
+                            <span className="text-[#38BDF8]">C {Math.round(recent.carbsG)}g</span>
+                            <span className="text-[#FBBF24]">F {Math.round(recent.fatG)}g</span>
+                          </div>
+                        </div>
+
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          {onCreateSavedMeal ? (
+                            <button
+                              type="button"
+                              disabled={alreadySaved || isPromoting || busy}
+                              onClick={() => void handlePromoteRecentClick(recent, key)}
+                              title={alreadySaved ? 'Already in Favorites' : 'Save to Favorites'}
+                              className={`inline-flex min-h-[38px] items-center gap-1 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition ${
+                                alreadySaved
+                                  ? 'border-[#2EE6A6]/30 bg-[#2EE6A6]/10 text-[#2EE6A6]'
+                                  : 'border-white/10 bg-white/[0.04] text-slate-200 hover:border-[#FFB020]/40 hover:bg-[#FFB020]/15 hover:text-[#FFB020]'
+                              } disabled:opacity-65`}
+                            >
+                              {isPromoting ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Star
+                                  className={`h-3.5 w-3.5 ${alreadySaved ? 'fill-current' : 'text-[#FFB020]'}`}
+                                />
+                              )}
+                              <span>{alreadySaved ? 'Saved' : 'Save'}</span>
+                            </button>
+                          ) : null}
+
+                          <button
+                            type="button"
+                            disabled={busy || isLogging}
+                            onClick={() => void handleLogRecentClick(recent, key)}
+                            className="inline-flex min-h-[38px] items-center gap-1 rounded-xl bg-white/10 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#2EE6A6] hover:text-[#081016] disabled:opacity-60"
+                          >
+                            {isLogging ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Plus className="h-3.5 w-3.5" />
+                            )}
+                            <span>Log</span>
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+
+            {renderErrorAlert()}
+          </div>
+        ) : (
+          /* TAB 3 & TAB 4: MANUAL MEAL (OR EDIT MEAL) & WORKOUT */
+          <>
+            {/* 1-Click Quick-Fill Presets (create mode only) */}
+            {!isEditingMeal ? (
+              <div className="mt-4 min-w-0">
+                <div className="mb-2 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-slate-400">
+                  <Sparkles className="h-3 w-3 shrink-0 text-[#2EE6A6]" />
+                  <span>1-Click Presets</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {activeTab === 'meal'
+                    ? MEAL_PRESETS.map((preset) => (
+                        <button
+                          key={preset.label}
+                          type="button"
+                          onClick={() => applyMealPreset(preset)}
+                          className="min-h-[40px] max-w-full rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-2 text-xs font-medium text-slate-200 transition hover:border-[#2EE6A6]/40 hover:bg-[#2EE6A6]/10 hover:text-[#2EE6A6] sm:min-h-0 sm:px-3 sm:py-1.5"
+                        >
+                          {preset.label}
+                        </button>
+                      ))
+                    : WORKOUT_PRESETS.map((preset) => (
+                        <button
+                          key={preset.label}
+                          type="button"
+                          onClick={() => applyWorkoutPreset(preset)}
+                          className="min-h-[40px] max-w-full rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-2 text-xs font-medium text-slate-200 transition hover:border-[#FFB020]/40 hover:bg-[#FFB020]/10 hover:text-[#FFB020] sm:min-h-0 sm:px-3 sm:py-1.5"
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                </div>
+              </div>
+            ) : null}
 
             {/* Form */}
             <form onSubmit={handleSubmit} className="mt-4 min-w-0 space-y-3.5">
-              {activeTab === 'meal' ? (
+              {isEditingMeal || activeTab === 'meal' ? (
                 <>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                     <div className="min-w-0 sm:col-span-2">
@@ -1186,7 +1946,7 @@ export function QuickLogModal({
                         onChange={(e) =>
                           setMealForm({
                             ...mealForm,
-                            mealType: e.target.value as CreateNutritionLogInput['mealType'],
+                            mealType: e.target.value as LoggableMealType,
                           })
                         }
                         className={inputClasses}
@@ -1199,72 +1959,23 @@ export function QuickLogModal({
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                    <div className="min-w-0">
-                      <label className="mb-1 block text-xs font-medium text-slate-300">
-                        Calories
-                      </label>
+                  <MacroFieldsGrid
+                    values={mealForm}
+                    onChange={(field, value) => setMealForm((prev) => ({ ...prev, [field]: value }))}
+                    inputClasses={inputClasses}
+                  />
+
+                  {!isEditingMeal && onCreateSavedMeal ? (
+                    <label className="flex min-h-[40px] cursor-pointer items-center gap-2.5 rounded-2xl border border-white/10 bg-[#0A0C10]/60 px-3.5 py-2 text-xs font-medium text-slate-300 transition hover:border-white/20">
                       <input
-                        type="number"
-                        inputMode="decimal"
-                        min={0}
-                        max={10000}
-                        step="1"
-                        required
-                        value={mealForm.calories}
-                        onChange={(e) => setMealForm({ ...mealForm, calories: e.target.value })}
-                        className={`${inputClasses} tabular-nums`}
+                        type="checkbox"
+                        checked={saveToFavorites}
+                        onChange={(e) => setSaveToFavorites(e.target.checked)}
+                        className="h-4 w-4 rounded border-white/20 bg-[#141720] accent-[#2EE6A6]"
                       />
-                    </div>
-                    <div className="min-w-0">
-                      <label className="mb-1 block text-xs font-medium text-[#2EE6A6]">
-                        Protein (g)
-                      </label>
-                      <input
-                        type="number"
-                        inputMode="decimal"
-                        min={0}
-                        max={1000}
-                        step="0.5"
-                        required
-                        value={mealForm.proteinG}
-                        onChange={(e) => setMealForm({ ...mealForm, proteinG: e.target.value })}
-                        className={`${inputClasses} tabular-nums`}
-                      />
-                    </div>
-                    <div className="min-w-0">
-                      <label className="mb-1 block text-xs font-medium text-[#38BDF8]">
-                        Carbs (g)
-                      </label>
-                      <input
-                        type="number"
-                        inputMode="decimal"
-                        min={0}
-                        max={1500}
-                        step="0.5"
-                        required
-                        value={mealForm.carbsG}
-                        onChange={(e) => setMealForm({ ...mealForm, carbsG: e.target.value })}
-                        className={`${inputClasses} tabular-nums`}
-                      />
-                    </div>
-                    <div className="min-w-0">
-                      <label className="mb-1 block text-xs font-medium text-[#FBBF24]">
-                        Fat (g)
-                      </label>
-                      <input
-                        type="number"
-                        inputMode="decimal"
-                        min={0}
-                        max={1000}
-                        step="0.5"
-                        required
-                        value={mealForm.fatG}
-                        onChange={(e) => setMealForm({ ...mealForm, fatG: e.target.value })}
-                        className={`${inputClasses} tabular-nums`}
-                      />
-                    </div>
-                  </div>
+                      <span>Save to Favorites too for 1-tap repeat logging</span>
+                    </label>
+                  ) : null}
                 </>
               ) : (
                 <>
@@ -1335,7 +2046,7 @@ export function QuickLogModal({
                         inputMode="decimal"
                         min={0}
                         max={10000}
-                        step="1"
+                        step="any"
                         required
                         value={workoutForm.activeCalories}
                         onChange={(e) =>
@@ -1383,11 +2094,15 @@ export function QuickLogModal({
                   type="submit"
                   disabled={busy}
                   className={`inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-2xl px-5 py-2.5 text-sm font-bold text-[#081016] transition hover:brightness-110 disabled:cursor-wait disabled:opacity-70 sm:flex-none sm:text-xs ${
-                    activeTab === 'meal' ? 'bg-[#2EE6A6]' : 'bg-[#FFB020]'
+                    isEditingMeal || activeTab === 'meal' ? 'bg-[#2EE6A6]' : 'bg-[#FFB020]'
                   }`}
                 >
                   {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                  {activeTab === 'meal' ? 'Save Meal' : 'Save Workout'}
+                  {isEditingMeal
+                    ? 'Save Changes'
+                    : activeTab === 'meal'
+                      ? 'Save Meal'
+                      : 'Save Workout'}
                 </button>
               </div>
             </form>

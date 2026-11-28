@@ -1,6 +1,7 @@
 import type {
   BodyMetricDTO,
   NutritionLogDTO,
+  SavedMealDTO,
   SupplementConfig,
   UserGoalDTO,
   UserProfileDTO,
@@ -44,6 +45,14 @@ function roundTo(value: number, decimals: number): number {
   return Math.round(value * factor) / factor;
 }
 
+export interface SeedHydrationLog {
+  id: string;
+  userId: string;
+  loggedDate: string;
+  amountMl: number;
+  loggedAt: string;
+}
+
 export interface SeedDataset {
   today: string;
   profile: UserProfileDTO;
@@ -51,6 +60,8 @@ export interface SeedDataset {
   bodyMetrics: BodyMetricDTO[];
   workoutLogs: WorkoutLogDTO[];
   nutritionLogs: NutritionLogDTO[];
+  savedMeals: SavedMealDTO[];
+  hydrationLogs: SeedHydrationLog[];
 }
 
 export const DEFAULT_SUPPLEMENT_STACK: SupplementConfig[] = [
@@ -294,6 +305,68 @@ export function createSeedDataset(todayDate: string = getLocalDateString()): See
     },
   ];
 
+  const savedMeals: SavedMealDTO[] = [
+    {
+      id: 'saved-meal-01',
+      userId: SEED_USER_ID,
+      name: 'Protein Oats & Whey Berry Bowl',
+      defaultMealType: 'breakfast',
+      calories: 560,
+      proteinG: 46,
+      carbsG: 62,
+      fatG: 13,
+      servingNote: '1 bowl (80g oats + 1 scoop whey)',
+      usageCount: 14,
+      lastUsedAt: `${todayDate}T08:15:00.000Z`,
+      createdAt: `${shiftDateString(todayDate, -25)}T08:00:00.000Z`,
+    },
+    {
+      id: 'saved-meal-02',
+      userId: SEED_USER_ID,
+      name: 'Grilled Chicken & Jasmine Rice Bowl',
+      defaultMealType: 'lunch',
+      calories: 740,
+      proteinG: 58,
+      carbsG: 78,
+      fatG: 20,
+      servingNote: '200g chicken + 180g jasmine rice',
+      usageCount: 11,
+      lastUsedAt: `${todayDate}T13:10:00.000Z`,
+      createdAt: `${shiftDateString(todayDate, -20)}T12:00:00.000Z`,
+    },
+    {
+      id: 'saved-meal-03',
+      userId: SEED_USER_ID,
+      name: 'Whey Isolate & Banana Shake',
+      defaultMealType: 'snack',
+      calories: 240,
+      proteinG: 30,
+      carbsG: 27,
+      fatG: 1.5,
+      servingNote: '1 scoop whey + 1 medium banana',
+      usageCount: 8,
+      lastUsedAt: `${shiftDateString(todayDate, -1)}T16:30:00.000Z`,
+      createdAt: `${shiftDateString(todayDate, -18)}T15:00:00.000Z`,
+    },
+  ];
+
+  const hydrationLogs: SeedHydrationLog[] = [
+    {
+      id: 'hydration-today-01',
+      userId: SEED_USER_ID,
+      loggedDate: todayDate,
+      amountMl: 500,
+      loggedAt: `${todayDate}T07:05:00.000Z`,
+    },
+    {
+      id: 'hydration-today-02',
+      userId: SEED_USER_ID,
+      loggedDate: todayDate,
+      amountMl: 750,
+      loggedAt: `${todayDate}T12:30:00.000Z`,
+    },
+  ];
+
   return {
     today: todayDate,
     profile,
@@ -301,5 +374,7 @@ export function createSeedDataset(todayDate: string = getLocalDateString()): See
     bodyMetrics,
     workoutLogs,
     nutritionLogs,
+    savedMeals,
+    hydrationLogs,
   };
 }

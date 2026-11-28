@@ -2,7 +2,9 @@ import { eq } from 'drizzle-orm';
 import { closeDb, getDb } from './index';
 import {
   bodyMetrics,
+  hydrationLogs,
   nutritionLogs,
+  savedMeals,
   userGoals,
   userProfiles,
   workoutLogs,
@@ -93,10 +95,41 @@ async function main() {
         })),
       );
     }
+
+    if (dataset.savedMeals.length > 0) {
+      await tx.insert(savedMeals).values(
+        dataset.savedMeals.map((m) => ({
+          id: m.id,
+          userId: m.userId,
+          name: m.name,
+          defaultMealType: m.defaultMealType,
+          calories: m.calories,
+          proteinG: m.proteinG,
+          carbsG: m.carbsG,
+          fatG: m.fatG,
+          servingNote: m.servingNote,
+          usageCount: m.usageCount,
+          lastUsedAt: m.lastUsedAt ? new Date(m.lastUsedAt) : null,
+          createdAt: new Date(m.createdAt),
+        })),
+      );
+    }
+
+    if (dataset.hydrationLogs.length > 0) {
+      await tx.insert(hydrationLogs).values(
+        dataset.hydrationLogs.map((h) => ({
+          id: h.id,
+          userId: h.userId,
+          loggedDate: h.loggedDate,
+          amountMl: h.amountMl,
+          loggedAt: new Date(h.loggedAt),
+        })),
+      );
+    }
   });
 
   console.log(
-    `Seeded 1 profile, 1 goal, ${dataset.bodyMetrics.length} body metrics, ${dataset.workoutLogs.length} workouts, and ${dataset.nutritionLogs.length} nutrition/supplement logs.`,
+    `Seeded 1 profile, 1 goal, ${dataset.bodyMetrics.length} body metrics, ${dataset.workoutLogs.length} workouts, ${dataset.nutritionLogs.length} nutrition/supplement logs, ${dataset.savedMeals.length} saved meals, and ${dataset.hydrationLogs.length} hydration entries.`,
   );
 }
 

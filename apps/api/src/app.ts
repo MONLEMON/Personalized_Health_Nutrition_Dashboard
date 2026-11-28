@@ -5,6 +5,7 @@ import { getRepository, type HealthRepository } from './db/repository';
 import { createAuthMiddleware, type TokenVerifierFn } from './middleware/auth';
 import { createCoachRoutes } from './routes/coach';
 import { createDashboardRoutes } from './routes/dashboard';
+import { createHydrationRoutes } from './routes/hydration';
 import { createMeRoutes } from './routes/me';
 import { createMetricsRoutes } from './routes/metrics';
 import { createNutritionRoutes, createSupplementRoutes } from './routes/nutrition';
@@ -65,6 +66,7 @@ export function createApp(
     createNutritionRoutes(resolveRepo, options?.parseNutrition, authMiddleware),
   );
   app.route('/api/supplements', createSupplementRoutes(resolveRepo, authMiddleware));
+  app.route('/api/hydration', createHydrationRoutes(resolveRepo, authMiddleware));
   app.route('/api/workouts', createWorkoutRoutes(resolveRepo, authMiddleware));
   app.route('/api/webhooks', createWebhookRoutes(resolveRepo, { authMiddleware }));
   app.route(

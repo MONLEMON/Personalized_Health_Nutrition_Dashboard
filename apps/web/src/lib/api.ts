@@ -1,15 +1,21 @@
 /// <reference types="vite/client" />
 import type {
+  AddWaterLogInput,
   AppleHealthWebhookResponse,
   ApplyWeeklyCoachResponse,
   BodyMetricDTO,
+  CopyYesterdayMealsInput,
+  CopyYesterdayMealsResponse,
   CreateBatchNutritionLogsInput,
   CreateBodyMetricInput,
   CreateNutritionLogInput,
+  CreateSavedMealInput,
   CreateWorkoutLogInput,
   DashboardBootstrapResponse,
   DashboardTodayResponse,
   GenerateWeeklyCoachInput,
+  LogSavedMealInput,
+  LogSavedMealResponse,
   MeResponseDTO,
   MetricsTrendsResponse,
   MonthlyCalendarResponse,
@@ -17,11 +23,15 @@ import type {
   NutritionLogSource,
   OnboardingProfileInput,
   ParseNutritionResponse,
+  SavedMealDTO,
+  SavedMealsListResponse,
   SyncStatusDTO,
   ToggleSupplementInput,
+  UpdateNutritionLogInput,
   UpdateProfileSettingsInput,
   UpdateSupplementsInput,
   UpdateSupplementsResponse,
+  WaterLogSummaryDTO,
   WebhookKeyResponse,
   WeeklyCoachReportDTO,
   WeeklyCoachStatusResponse,
@@ -420,5 +430,75 @@ export async function applyWeeklyCoachRecommendation(
   return request<ApplyWeeklyCoachResponse>('/api/coach/weekly/apply', {
     method: 'POST',
     body: JSON.stringify({ reportId }),
+  });
+}
+
+export async function updateNutritionLog(
+  id: string,
+  input: UpdateNutritionLogInput,
+): Promise<NutritionLogDTO> {
+  return request<NutritionLogDTO>(`/api/nutrition/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function fetchSavedMeals(): Promise<SavedMealsListResponse> {
+  return request<SavedMealsListResponse>('/api/nutrition/saved');
+}
+
+export async function createSavedMeal(input: CreateSavedMealInput): Promise<SavedMealDTO> {
+  return request<SavedMealDTO>('/api/nutrition/saved', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteSavedMeal(id: string): Promise<void> {
+  await request<{ deleted: boolean; id: string }>(
+    `/api/nutrition/saved/${encodeURIComponent(id)}`,
+    {
+      method: 'DELETE',
+    },
+  );
+}
+
+export async function logSavedMeal(
+  savedMealId: string,
+  input?: Partial<LogSavedMealInput>,
+): Promise<LogSavedMealResponse> {
+  return request<LogSavedMealResponse>(
+    `/api/nutrition/saved/${encodeURIComponent(savedMealId)}/log`,
+    {
+      method: 'POST',
+      body: JSON.stringify(input ?? {}),
+    },
+  );
+}
+
+export async function copyYesterdayMeals(
+  input?: CopyYesterdayMealsInput,
+): Promise<CopyYesterdayMealsResponse> {
+  return request<CopyYesterdayMealsResponse>('/api/nutrition/copy-yesterday', {
+    method: 'POST',
+    body: JSON.stringify(input ?? {}),
+  });
+}
+
+export async function fetchTodayHydration(date?: string): Promise<WaterLogSummaryDTO> {
+  const query = date ? `?date=${encodeURIComponent(date)}` : '';
+  return request<WaterLogSummaryDTO>(`/api/hydration/today${query}`);
+}
+
+export async function addWaterLog(input: AddWaterLogInput): Promise<WaterLogSummaryDTO> {
+  return request<WaterLogSummaryDTO>('/api/hydration', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteWaterLog(id: string): Promise<WaterLogSummaryDTO> {
+  return request<WaterLogSummaryDTO>(`/api/hydration/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
   });
 }

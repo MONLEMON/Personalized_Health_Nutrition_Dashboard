@@ -13,6 +13,7 @@ import {
 import type {
   CalorieCyclingConfig,
   GoalType,
+  LoggableMealType,
   MealType,
   NutritionLogSource,
   Sex,
@@ -167,4 +168,39 @@ export const weeklyCoachReports = pgTable(
       table.weekStartDate,
     ),
   ],
+);
+
+export const savedMeals = pgTable(
+  'saved_meals',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => userProfiles.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    defaultMealType: text('default_meal_type').$type<LoggableMealType>().notNull(),
+    calories: doublePrecision('calories').notNull(),
+    proteinG: doublePrecision('protein_g').notNull(),
+    carbsG: doublePrecision('carbs_g').notNull(),
+    fatG: doublePrecision('fat_g').notNull(),
+    servingNote: text('serving_note'),
+    usageCount: integer('usage_count').notNull().default(0),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [index('saved_meals_user_usage_idx').on(table.userId, table.usageCount)],
+);
+
+export const hydrationLogs = pgTable(
+  'hydration_logs',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => userProfiles.id, { onDelete: 'cascade' }),
+    loggedDate: text('logged_date').notNull(),
+    amountMl: integer('amount_ml').notNull(),
+    loggedAt: timestamp('logged_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [index('hydration_logs_user_date_idx').on(table.userId, table.loggedDate)],
 );

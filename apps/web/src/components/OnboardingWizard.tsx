@@ -434,7 +434,7 @@ export function OnboardingWizard() {
                     <input
                       type="number"
                       inputMode="decimal"
-                      step="0.5"
+                      step="any"
                       min={80}
                       max={260}
                       required
@@ -470,7 +470,7 @@ export function OnboardingWizard() {
                     <input
                       type="number"
                       inputMode="decimal"
-                      step="0.1"
+                      step="any"
                       min={20}
                       max={400}
                       required
@@ -486,7 +486,7 @@ export function OnboardingWizard() {
                     <input
                       type="number"
                       inputMode="decimal"
-                      step="0.1"
+                      step="any"
                       min={2}
                       max={75}
                       value={bodyFatPct}
@@ -501,7 +501,7 @@ export function OnboardingWizard() {
                     <input
                       type="number"
                       inputMode="decimal"
-                      step="0.1"
+                      step="any"
                       min={5}
                       max={150}
                       value={skeletalMuscleKg}
@@ -654,7 +654,7 @@ export function OnboardingWizard() {
                   <input
                     type="number"
                     inputMode="decimal"
-                    step="50"
+                    step="1"
                     min={-1500}
                     max={1500}
                     required

@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { and, asc, desc, eq, gte, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, lte, ne, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type {
   AppleHealthWebhookPayload,
@@ -10,8 +10,11 @@ import type {
   CalendarDaySummaryDTO,
   CalorieCyclingConfig,
   CalorieCyclingMode,
+  CopyYesterdayMealsResponse,
   DashboardBootstrapResponse,
   DashboardTodayResponse,
+  HydrationEntryDTO,
+  LogSavedMealResponse,
   MacroProgress,
   MeResponseDTO,
   MetricsTrendsResponse,
@@ -19,11 +22,15 @@ import type {
   MonthlyCalendarSummaryDTO,
   NutritionLogDTO,
   NutritionLogSource,
+  RecentMealSuggestionDTO,
+  SavedMealDTO,
+  SavedMealsListResponse,
   SupplementConfig,
   SupplementStatusDTO,
   SyncStatusDTO,
   UserGoalDTO,
   UserProfileDTO,
+  WaterLogSummaryDTO,
   WebhookKeyResponse,
   WebhookKeyStatusDTO,
   WeekdayKey,
@@ -34,18 +41,25 @@ import type {
   WorkoutLogDTO,
 } from '@health-dash/shared';
 import type {
+  AddWaterLogInput,
+  CopyYesterdayMealsInput,
   CreateBatchNutritionLogsInput,
   CreateBodyMetricInput,
   CreateNutritionLogInput,
+  CreateSavedMealInput,
   CreateWorkoutLogInput,
+  LogSavedMealInput,
   OnboardingProfileInput,
   ToggleSupplementInput,
+  UpdateNutritionLogInput,
   UpdateProfileSettingsInput,
 } from '@health-dash/shared';
 import { getDb, type Database } from './index';
 import {
   bodyMetrics,
+  hydrationLogs,
   nutritionLogs,
+  savedMeals,
   syncLogs,
   userGoals,
   userProfiles,
@@ -57,6 +71,8 @@ import {
   DEFAULT_SUPPLEMENT_STACK,
   getLocalDateString,
   SEED_USER_ID,
+  shiftDateString,
+  type SeedHydrationLog,
 } from './seed-data';
 import { hashWebhookApiKey } from '../middleware/webhookAuth';
 import {
@@ -195,7 +211,33 @@ export interface HealthRepository {
     userId: string,
     input: CreateBatchNutritionLogsInput,
   ): Promise<NutritionLogDTO[]>;
+  updateNutritionLog(
+    userId: string,
+    id: string,
+    input: UpdateNutritionLogInput,
+  ): Promise<NutritionLogDTO | null>;
   deleteNutritionLog(userId: string, id: string): Promise<boolean>;
+  listSavedAndRecentMeals(
+    userId: string,
+    todayDate?: string,
+  ): Promise<SavedMealsListResponse>;
+  createSavedMeal(
+    userId: string,
+    input: CreateSavedMealInput,
+  ): Promise<SavedMealDTO>;
+  deleteSavedMeal(userId: string, id: string): Promise<boolean>;
+  logSavedMeal(
+    userId: string,
+    savedMealId: string,
+    input: Partial<LogSavedMealInput>,
+  ): Promise<LogSavedMealResponse | null>;
+  copyYesterdayMeals(
+    userId: string,
+    input: CopyYesterdayMealsInput,
+  ): Promise<CopyYesterdayMealsResponse>;
+  getHydrationSummary(userId: string, date?: string): Promise<WaterLogSummaryDTO>;
+  addWaterLog(userId: string, input: AddWaterLogInput): Promise<WaterLogSummaryDTO>;
+  deleteWaterLog(userId: string, id: string): Promise<WaterLogSummaryDTO | null>;
   createWorkoutLog(
     userId: string,
     input: CreateWorkoutLogInput,
@@ -321,6 +363,155 @@ function buildMacroProgress(consumed: number, target: number): MacroProgress {
     remaining: Math.max(0, roundTo(target - roundedConsumed, 1)),
     percentage: target > 0 ? Math.round((roundedConsumed / target) * 100) : 0,
   };
+}
+
+/**
+ * Computes daily hydration target (ml) and bonus breakdown from body weight,
+ * active workout calories, and creatine usage in the user's supplement stack.
+ */
+export function calculateWaterTargetBreakdown(params: {
+  weightKg: number;
+  activeCalories: number;
+  supplementStack: SupplementConfig[];
+}): {
+  targetMl: number;
+  baseMl: number;
+  workoutBonusMl: number;
+  creatineBonusMl: number;
+} {
+  const baseMl =
+    Math.round(Math.min(4500, Math.max(1500, params.weightKg * 35)) / 50) * 50;
+  const workoutBonusMl = Math.min(
+    1000,
+    Math.max(0, Math.round((params.activeCalories * 0.5) / 50) * 50),
+  );
+  const creatineBonusMl = params.supplementStack.some(
+    (s) => /creatine/i.test(s.key) || /creatine/i.test(s.name),
+  )
+    ? 500
+    : 0;
+  return {
+    targetMl: baseMl + workoutBonusMl + creatineBonusMl,
+    baseMl,
+    workoutBonusMl,
+    creatineBonusMl,
+  };
+}
+
+function buildWaterLogSummary(params: {
+  date: string;
+  weightKg: number;
+  activeCalories: number;
+  supplementStack: SupplementConfig[];
+  entries: HydrationEntryDTO[];
+}): WaterLogSummaryDTO {
+  const { targetMl, baseMl, workoutBonusMl, creatineBonusMl } =
+    calculateWaterTargetBreakdown({
+      weightKg: params.weightKg,
+      activeCalories: params.activeCalories,
+      supplementStack: params.supplementStack,
+    });
+  const consumedMl = Math.round(
+    params.entries.reduce((sum, entry) => sum + entry.amountMl, 0),
+  );
+  const remainingMl = Math.max(0, targetMl - consumedMl);
+  const percentage = targetMl > 0 ? Math.round((consumedMl / targetMl) * 100) : 0;
+
+  return {
+    date: params.date,
+    consumedMl,
+    targetMl,
+    remainingMl,
+    percentage,
+    breakdown: {
+      baseMl,
+      workoutBonusMl,
+      creatineBonusMl,
+    },
+    entries: params.entries.map((entry) => ({ ...entry })),
+  };
+}
+
+function sortSavedMeals(items: SavedMealDTO[]): SavedMealDTO[] {
+  return [...items]
+    .sort((a, b) => {
+      if (b.usageCount !== a.usageCount) {
+        return b.usageCount - a.usageCount;
+      }
+      const aUsed = a.lastUsedAt ?? '';
+      const bUsed = b.lastUsedAt ?? '';
+      if (bUsed !== aUsed) {
+        return bUsed.localeCompare(aUsed);
+      }
+      return b.createdAt.localeCompare(a.createdAt);
+    })
+    .map((item) => ({ ...item }));
+}
+
+function buildRecentMealSuggestions(
+  logs: NutritionLogDTO[],
+  todayDate: string,
+): RecentMealSuggestionDTO[] {
+  const windowStart = shiftDateString(todayDate, -13);
+  const grouped = new Map<
+    string,
+    { suggestion: RecentMealSuggestionDTO; latestLoggedAt: string }
+  >();
+
+  for (const log of logs) {
+    if (log.mealType === 'supplement') continue;
+    if (log.loggedDate < windowStart || log.loggedDate > todayDate) continue;
+
+    const normalizedName = log.itemName.trim().toLowerCase();
+    if (!normalizedName) continue;
+
+    const existing = grouped.get(normalizedName);
+    if (!existing) {
+      grouped.set(normalizedName, {
+        suggestion: {
+          itemName: log.itemName,
+          mealType: log.mealType,
+          calories: log.calories,
+          proteinG: log.proteinG,
+          carbsG: log.carbsG,
+          fatG: log.fatG,
+          lastLoggedDate: log.loggedDate,
+          logCount: 1,
+        },
+        latestLoggedAt: log.loggedAt,
+      });
+      continue;
+    }
+
+    existing.suggestion.logCount += 1;
+    const isNewer =
+      log.loggedDate > existing.suggestion.lastLoggedDate ||
+      (log.loggedDate === existing.suggestion.lastLoggedDate &&
+        log.loggedAt >= existing.latestLoggedAt);
+    if (isNewer) {
+      existing.suggestion.itemName = log.itemName;
+      existing.suggestion.mealType = log.mealType;
+      existing.suggestion.calories = log.calories;
+      existing.suggestion.proteinG = log.proteinG;
+      existing.suggestion.carbsG = log.carbsG;
+      existing.suggestion.fatG = log.fatG;
+      existing.suggestion.lastLoggedDate = log.loggedDate;
+      existing.latestLoggedAt = log.loggedAt;
+    }
+  }
+
+  return Array.from(grouped.values())
+    .sort((a, b) => {
+      const dateCmp = b.suggestion.lastLoggedDate.localeCompare(
+        a.suggestion.lastLoggedDate,
+      );
+      if (dateCmp !== 0) return dateCmp;
+      const countCmp = b.suggestion.logCount - a.suggestion.logCount;
+      if (countCmp !== 0) return countCmp;
+      return b.latestLoggedAt.localeCompare(a.latestLoggedAt);
+    })
+    .slice(0, 12)
+    .map((entry) => entry.suggestion);
 }
 
 function buildWeeklyBudgetSummary(params: {
@@ -470,6 +661,7 @@ function buildDashboardTodayResponse(params: {
   latestMetric: BodyMetricDTO;
   workouts: WorkoutLogDTO[];
   nutritionForDate: NutritionLogDTO[];
+  hydrationEntries?: HydrationEntryDTO[];
   weeklyBudget?: WeeklyBudgetSummaryDTO;
 }): DashboardTodayResponse {
   const {
@@ -480,6 +672,7 @@ function buildDashboardTodayResponse(params: {
     latestMetric,
     workouts,
     nutritionForDate,
+    hydrationEntries = [],
     weeklyBudget,
   } = params;
 
@@ -556,6 +749,14 @@ function buildDashboardTodayResponse(params: {
     taken: takenKeys.has(supp.key),
   }));
 
+  const hydration = buildWaterLogSummary({
+    date,
+    weightKg: latestMetric.weightKg,
+    activeCalories,
+    supplementStack: profile.supplementStack,
+    entries: hydrationEntries,
+  });
+
   return {
     date,
     storageMode,
@@ -590,6 +791,7 @@ function buildDashboardTodayResponse(params: {
     workouts,
     meals,
     supplements,
+    hydration,
     ...(weeklyBudget ? { weeklyBudget } : {}),
   };
 }
@@ -662,6 +864,7 @@ function buildMonthlyCalendarResponse(params: {
   earliestFallbackMetric: BodyMetricDTO | null;
   workoutsInMonth: WorkoutLogDTO[];
   nutritionInMonth: NutritionLogDTO[];
+  hydrationInMonth?: Array<{ loggedDate: string; amountMl: number }>;
 }): MonthlyCalendarResponse {
   const {
     month,
@@ -673,6 +876,7 @@ function buildMonthlyCalendarResponse(params: {
     earliestFallbackMetric,
     workoutsInMonth,
     nutritionInMonth,
+    hydrationInMonth = [],
   } = params;
 
   const sortedMetrics = [...metricsUpToMonthEnd].sort((a, b) =>
@@ -701,6 +905,14 @@ function buildMonthlyCalendarResponse(params: {
     } else {
       nutritionByDate.set(entry.loggedDate, [entry]);
     }
+  }
+
+  const waterByDate = new Map<string, number>();
+  for (const entry of hydrationInMonth) {
+    waterByDate.set(
+      entry.loggedDate,
+      (waterByDate.get(entry.loggedDate) ?? 0) + entry.amountMl,
+    );
   }
 
   const supplementsTotal = profile.supplementStack.length;
@@ -856,6 +1068,7 @@ function buildMonthlyCalendarResponse(params: {
       bodyFatPct: dayMetric ? dayMetric.bodyFatPct : null,
       sleepHours: dayMetric ? (dayMetric.sleepHours ?? null) : null,
       restingHr: dayMetric ? (dayMetric.restingHr ?? null) : null,
+      waterMl: Math.round(waterByDate.get(dayDate) ?? 0),
     });
   }
 
@@ -904,6 +1117,8 @@ interface InMemoryUserRecord {
   metrics: BodyMetricDTO[];
   workouts: WorkoutLogDTO[];
   nutrition: NutritionLogDTO[];
+  savedMeals: SavedMealDTO[];
+  hydrationLogs: SeedHydrationLog[];
   syncLogs: InMemorySyncLogRecord[];
   coachReports: WeeklyCoachReportDTO[];
 }
@@ -940,6 +1155,8 @@ export class InMemoryHealthRepository implements HealthRepository {
         ...n,
         source: n.source ?? 'MANUAL',
       })),
+      savedMeals: seed.savedMeals.map((s) => ({ ...s })),
+      hydrationLogs: seed.hydrationLogs.map((h) => ({ ...h })),
       syncLogs: [],
       coachReports: [],
     });
@@ -1053,6 +1270,8 @@ export class InMemoryHealthRepository implements HealthRepository {
       metrics: [],
       workouts: [],
       nutrition: [],
+      savedMeals: [],
+      hydrationLogs: [],
       syncLogs: [],
       coachReports: [],
     };
@@ -1155,6 +1374,10 @@ export class InMemoryHealthRepository implements HealthRepository {
 
     const workouts = workoutsInWeek.filter((w) => w.loggedDate === targetDate);
     const nutritionForDate = nutritionInWeek.filter((n) => n.loggedDate === targetDate);
+    const hydrationEntries: HydrationEntryDTO[] = user.hydrationLogs
+      .filter((h) => h.userId === userId && h.loggedDate === targetDate)
+      .sort((a, b) => a.loggedAt.localeCompare(b.loggedAt))
+      .map((h) => ({ id: h.id, amountMl: h.amountMl, loggedAt: h.loggedAt }));
 
     const profileDTO: UserProfileDTO = {
       ...user.profile,
@@ -1184,6 +1407,7 @@ export class InMemoryHealthRepository implements HealthRepository {
       },
       workouts,
       nutritionForDate,
+      hydrationEntries,
       weeklyBudget,
     });
   }
@@ -1247,6 +1471,31 @@ export class InMemoryHealthRepository implements HealthRepository {
     return created.map((record) => ({ ...record }));
   }
 
+  async updateNutritionLog(
+    userId: string,
+    id: string,
+    input: UpdateNutritionLogInput,
+  ): Promise<NutritionLogDTO | null> {
+    const user = this.users.get(userId);
+    if (!user) {
+      return null;
+    }
+    const existing = user.nutrition.find(
+      (n) => n.id === id && n.userId === userId && n.mealType !== 'supplement',
+    );
+    if (!existing) {
+      return null;
+    }
+
+    existing.itemName = input.itemName;
+    existing.mealType = input.mealType;
+    existing.calories = input.calories;
+    existing.proteinG = input.proteinG;
+    existing.carbsG = input.carbsG;
+    existing.fatG = input.fatG;
+    return { ...existing };
+  }
+
   async deleteNutritionLog(userId: string, id: string): Promise<boolean> {
     const user = this.users.get(userId);
     if (!user) {
@@ -1258,6 +1507,219 @@ export class InMemoryHealthRepository implements HealthRepository {
     }
     user.nutrition.splice(idx, 1);
     return true;
+  }
+
+  async listSavedAndRecentMeals(
+    userId: string,
+    todayDate?: string,
+  ): Promise<SavedMealsListResponse> {
+    const user = this.users.get(userId);
+    if (!user) {
+      return { savedMeals: [], recentMeals: [] };
+    }
+    const resolvedToday = todayDate ?? getBangkokDateString();
+    return {
+      savedMeals: sortSavedMeals(user.savedMeals.filter((s) => s.userId === userId)),
+      recentMeals: buildRecentMealSuggestions(
+        user.nutrition.filter((n) => n.userId === userId),
+        resolvedToday,
+      ),
+    };
+  }
+
+  async createSavedMeal(
+    userId: string,
+    input: CreateSavedMealInput,
+  ): Promise<SavedMealDTO> {
+    const user = this.requireUser(userId);
+    const servingNote = input.servingNote?.trim() ? input.servingNote.trim() : null;
+    const record: SavedMealDTO = {
+      id: `saved-meal-${crypto.randomUUID()}`,
+      userId,
+      name: input.name,
+      defaultMealType: input.defaultMealType,
+      calories: input.calories,
+      proteinG: input.proteinG,
+      carbsG: input.carbsG,
+      fatG: input.fatG,
+      servingNote,
+      usageCount: 0,
+      lastUsedAt: null,
+      createdAt: new Date().toISOString(),
+    };
+    user.savedMeals.push(record);
+    return { ...record };
+  }
+
+  async deleteSavedMeal(userId: string, id: string): Promise<boolean> {
+    const user = this.users.get(userId);
+    if (!user) {
+      return false;
+    }
+    const idx = user.savedMeals.findIndex((s) => s.id === id && s.userId === userId);
+    if (idx === -1) {
+      return false;
+    }
+    user.savedMeals.splice(idx, 1);
+    return true;
+  }
+
+  async logSavedMeal(
+    userId: string,
+    savedMealId: string,
+    input: Partial<LogSavedMealInput>,
+  ): Promise<LogSavedMealResponse | null> {
+    const user = this.users.get(userId);
+    if (!user) {
+      return null;
+    }
+    const saved = user.savedMeals.find(
+      (s) => s.id === savedMealId && s.userId === userId,
+    );
+    if (!saved) {
+      return null;
+    }
+
+    const multiplier = input.multiplier ?? 1;
+    const loggedDate = input.loggedDate ?? getBangkokDateString();
+    const mealType = input.mealType ?? saved.defaultMealType;
+    const nowIso = new Date().toISOString();
+
+    const meal: NutritionLogDTO = {
+      id: `nutrition-${crypto.randomUUID()}`,
+      userId,
+      loggedDate,
+      mealType,
+      itemName: saved.name,
+      calories: Math.round(saved.calories * multiplier),
+      proteinG: roundTo(saved.proteinG * multiplier, 1),
+      carbsG: roundTo(saved.carbsG * multiplier, 1),
+      fatG: roundTo(saved.fatG * multiplier, 1),
+      supplementKey: null,
+      source: 'MANUAL',
+      loggedAt: nowIso,
+    };
+
+    user.nutrition.push(meal);
+    saved.usageCount += 1;
+    saved.lastUsedAt = nowIso;
+
+    return {
+      meal: { ...meal },
+      savedMeal: { ...saved },
+    };
+  }
+
+  async copyYesterdayMeals(
+    userId: string,
+    input: CopyYesterdayMealsInput,
+  ): Promise<CopyYesterdayMealsResponse> {
+    const user = this.requireUser(userId);
+    const targetDate = input.targetDate ?? getBangkokDateString();
+    const sourceDate = input.sourceDate ?? shiftDateString(targetDate, -1);
+    const allowedTypes = input.mealTypes ? new Set(input.mealTypes) : null;
+
+    const sourceMeals = user.nutrition
+      .filter(
+        (n) =>
+          n.userId === userId &&
+          n.loggedDate === sourceDate &&
+          n.mealType !== 'supplement' &&
+          (!allowedTypes || allowedTypes.has(n.mealType)),
+      )
+      .sort((a, b) => a.loggedAt.localeCompare(b.loggedAt));
+
+    if (sourceMeals.length === 0) {
+      return {
+        copiedCount: 0,
+        sourceDate,
+        targetDate,
+        items: [],
+      };
+    }
+
+    const baseTimeMs = Date.now();
+    const copied: NutritionLogDTO[] = sourceMeals.map((src, idx) => ({
+      id: `nutrition-${crypto.randomUUID()}`,
+      userId,
+      loggedDate: targetDate,
+      mealType: src.mealType,
+      itemName: src.itemName,
+      calories: src.calories,
+      proteinG: src.proteinG,
+      carbsG: src.carbsG,
+      fatG: src.fatG,
+      supplementKey: null,
+      source: 'MANUAL',
+      loggedAt: new Date(baseTimeMs + idx).toISOString(),
+    }));
+    user.nutrition.push(...copied);
+
+    return {
+      copiedCount: copied.length,
+      sourceDate,
+      targetDate,
+      items: copied.map((item) => ({ ...item })),
+    };
+  }
+
+  async getHydrationSummary(userId: string, date?: string): Promise<WaterLogSummaryDTO> {
+    const user = this.requireUser(userId);
+    const targetDate = date ?? getBangkokDateString();
+    const userMetrics = user.metrics.filter((m) => m.userId === userId);
+    const weightKg =
+      userMetrics.length > 0
+        ? selectLatestMetric(userMetrics, targetDate).weightKg
+        : DEFAULT_FALLBACK_WEIGHT_KG;
+    const activeCalories = Math.round(
+      user.workouts
+        .filter((w) => w.userId === userId && w.loggedDate === targetDate)
+        .reduce((sum, w) => sum + w.activeCalories, 0),
+    );
+    const entries: HydrationEntryDTO[] = user.hydrationLogs
+      .filter((h) => h.userId === userId && h.loggedDate === targetDate)
+      .sort((a, b) => a.loggedAt.localeCompare(b.loggedAt))
+      .map((h) => ({ id: h.id, amountMl: h.amountMl, loggedAt: h.loggedAt }));
+
+    return buildWaterLogSummary({
+      date: targetDate,
+      weightKg,
+      activeCalories,
+      supplementStack: user.profile.supplementStack,
+      entries,
+    });
+  }
+
+  async addWaterLog(
+    userId: string,
+    input: AddWaterLogInput,
+  ): Promise<WaterLogSummaryDTO> {
+    const user = this.requireUser(userId);
+    const loggedDate = input.loggedDate ?? getBangkokDateString();
+    user.hydrationLogs.push({
+      id: `hydration-${crypto.randomUUID()}`,
+      userId,
+      loggedDate,
+      amountMl: input.amountMl,
+      loggedAt: new Date().toISOString(),
+    });
+    return this.getHydrationSummary(userId, loggedDate);
+  }
+
+  async deleteWaterLog(
+    userId: string,
+    id: string,
+  ): Promise<WaterLogSummaryDTO | null> {
+    const user = this.users.get(userId);
+    if (!user) {
+      return null;
+    }
+    const idx = user.hydrationLogs.findIndex((h) => h.id === id && h.userId === userId);
+    if (idx === -1) {
+      return null;
+    }
+    const [removed] = user.hydrationLogs.splice(idx, 1);
+    return this.getHydrationSummary(userId, removed.loggedDate);
   }
 
   async createWorkoutLog(
@@ -1623,6 +2085,10 @@ export class InMemoryHealthRepository implements HealthRepository {
 
     const workouts = workoutsInWeek.filter((w) => w.loggedDate === targetDate);
     const nutritionForDate = nutritionInWeek.filter((n) => n.loggedDate === targetDate);
+    const hydrationEntries: HydrationEntryDTO[] = user.hydrationLogs
+      .filter((h) => h.userId === userId && h.loggedDate === targetDate)
+      .sort((a, b) => a.loggedAt.localeCompare(b.loggedAt))
+      .map((h) => ({ id: h.id, amountMl: h.amountMl, loggedAt: h.loggedAt }));
 
     const weeklyBudget = buildWeeklyBudgetSummary({
       targetDate,
@@ -1646,6 +2112,7 @@ export class InMemoryHealthRepository implements HealthRepository {
       },
       workouts,
       nutritionForDate,
+      hydrationEntries,
       weeklyBudget,
     });
 
@@ -1689,6 +2156,12 @@ export class InMemoryHealthRepository implements HealthRepository {
         n.loggedDate >= monthStart &&
         n.loggedDate <= monthEnd,
     );
+    const hydrationInMonth = user.hydrationLogs.filter(
+      (h) =>
+        h.userId === userId &&
+        h.loggedDate >= monthStart &&
+        h.loggedDate <= monthEnd,
+    );
 
     return buildMonthlyCalendarResponse({
       month: resolvedMonth,
@@ -1703,6 +2176,7 @@ export class InMemoryHealthRepository implements HealthRepository {
       earliestFallbackMetric,
       workoutsInMonth,
       nutritionInMonth,
+      hydrationInMonth,
     });
   }
 
@@ -1972,8 +2446,34 @@ function toWeeklyCoachReportDTO(
   });
 }
 
+function toSavedMealDTO(row: typeof savedMeals.$inferSelect): SavedMealDTO {
+  return {
+    id: row.id,
+    userId: row.userId,
+    name: row.name,
+    defaultMealType: row.defaultMealType,
+    calories: row.calories,
+    proteinG: row.proteinG,
+    carbsG: row.carbsG,
+    fatG: row.fatG,
+    servingNote: row.servingNote ?? null,
+    usageCount: row.usageCount,
+    lastUsedAt: row.lastUsedAt ? row.lastUsedAt.toISOString() : null,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+function toHydrationEntryDTO(row: typeof hydrationLogs.$inferSelect): HydrationEntryDTO {
+  return {
+    id: row.id,
+    amountMl: row.amountMl,
+    loggedAt: row.loggedAt.toISOString(),
+  };
+}
+
 export class PostgresHealthRepository implements HealthRepository {
   private phase6SchemaPromise: Promise<void> | null = null;
+  private phase8SchemaPromise: Promise<void> | null = null;
 
   constructor(private readonly db: Database) {}
 
@@ -2045,6 +2545,86 @@ export class PostgresHealthRepository implements HealthRepository {
       });
     }
     return this.phase6SchemaPromise;
+  }
+
+  private ensurePhase8Schema(): Promise<void> {
+    if (!this.phase8SchemaPromise) {
+      this.phase8SchemaPromise = (async () => {
+        await this.db.execute(sql`
+          CREATE TABLE IF NOT EXISTS public.saved_meals (
+            id text PRIMARY KEY,
+            user_id text NOT NULL REFERENCES public.user_profiles(id) ON DELETE CASCADE,
+            name text NOT NULL,
+            default_meal_type text NOT NULL,
+            calories double precision NOT NULL,
+            protein_g double precision NOT NULL,
+            carbs_g double precision NOT NULL,
+            fat_g double precision NOT NULL,
+            serving_note text,
+            usage_count integer NOT NULL DEFAULT 0,
+            last_used_at timestamptz,
+            created_at timestamptz NOT NULL DEFAULT now()
+          )
+        `);
+        await this.db.execute(sql`
+          CREATE INDEX IF NOT EXISTS saved_meals_user_usage_idx
+            ON public.saved_meals (user_id, usage_count)
+        `);
+        await this.db.execute(sql`
+          CREATE TABLE IF NOT EXISTS public.hydration_logs (
+            id text PRIMARY KEY,
+            user_id text NOT NULL REFERENCES public.user_profiles(id) ON DELETE CASCADE,
+            logged_date text NOT NULL,
+            amount_ml integer NOT NULL,
+            logged_at timestamptz NOT NULL DEFAULT now()
+          )
+        `);
+        await this.db.execute(sql`
+          CREATE INDEX IF NOT EXISTS hydration_logs_user_date_idx
+            ON public.hydration_logs (user_id, logged_date)
+        `);
+        await this.db.execute(sql`
+          ALTER TABLE public.saved_meals ENABLE ROW LEVEL SECURITY
+        `);
+        await this.db.execute(sql`
+          ALTER TABLE public.hydration_logs ENABLE ROW LEVEL SECURITY
+        `);
+        await this.db.execute(sql`
+          DO $$
+          DECLARE
+            tbl text;
+            tables text[] := ARRAY['saved_meals', 'hydration_logs'];
+          BEGIN
+            FOREACH tbl IN ARRAY tables LOOP
+              IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+                EXECUTE format('REVOKE ALL ON TABLE public.%I FROM anon', tbl);
+              END IF;
+              IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+                EXECUTE format('REVOKE ALL ON TABLE public.%I FROM authenticated', tbl);
+              END IF;
+              IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+                IF NOT EXISTS (
+                  SELECT 1
+                  FROM pg_policies
+                  WHERE schemaname = 'public'
+                    AND tablename = tbl
+                    AND policyname = 'service_role_full_access'
+                ) THEN
+                  EXECUTE format(
+                    'CREATE POLICY service_role_full_access ON public.%I FOR ALL TO service_role USING (true) WITH CHECK (true)',
+                    tbl
+                  );
+                END IF;
+              END IF;
+            END LOOP;
+          END $$
+        `);
+      })().catch((err) => {
+        this.phase8SchemaPromise = null;
+        throw err;
+      });
+    }
+    return this.phase8SchemaPromise;
   }
 
   private async findProfileRow(
@@ -2270,43 +2850,58 @@ export class PostgresHealthRepository implements HealthRepository {
   }
 
   async getTodayData(userId: string, date?: string): Promise<DashboardTodayResponse> {
-    await this.ensurePhase6Schema();
+    await Promise.all([this.ensurePhase6Schema(), this.ensurePhase8Schema()]);
     const targetDate = date ?? getLocalDateString();
     const { weekStartDate, weekEndDate } = getWeekBounds(targetDate);
 
-    const [{ profile, goal }, metricRowsUpToWeekEnd, weekWorkoutRows, weekNutritionRows] =
-      await Promise.all([
-        this.getProfileAndGoal(userId),
-        this.db
-          .select()
-          .from(bodyMetrics)
-          .where(
-            and(eq(bodyMetrics.userId, userId), lte(bodyMetrics.recordedDate, weekEndDate)),
-          )
-          .orderBy(asc(bodyMetrics.recordedDate), asc(bodyMetrics.createdAt)),
-        this.db
-          .select()
-          .from(workoutLogs)
-          .where(
-            and(
-              eq(workoutLogs.userId, userId),
-              gte(workoutLogs.loggedDate, weekStartDate),
-              lte(workoutLogs.loggedDate, weekEndDate),
-            ),
-          )
-          .orderBy(asc(workoutLogs.loggedAt)),
-        this.db
-          .select()
-          .from(nutritionLogs)
-          .where(
-            and(
-              eq(nutritionLogs.userId, userId),
-              gte(nutritionLogs.loggedDate, weekStartDate),
-              lte(nutritionLogs.loggedDate, weekEndDate),
-            ),
-          )
-          .orderBy(asc(nutritionLogs.loggedAt)),
-      ]);
+    const [
+      { profile, goal },
+      metricRowsUpToWeekEnd,
+      weekWorkoutRows,
+      weekNutritionRows,
+      hydrationRows,
+    ] = await Promise.all([
+      this.getProfileAndGoal(userId),
+      this.db
+        .select()
+        .from(bodyMetrics)
+        .where(
+          and(eq(bodyMetrics.userId, userId), lte(bodyMetrics.recordedDate, weekEndDate)),
+        )
+        .orderBy(asc(bodyMetrics.recordedDate), asc(bodyMetrics.createdAt)),
+      this.db
+        .select()
+        .from(workoutLogs)
+        .where(
+          and(
+            eq(workoutLogs.userId, userId),
+            gte(workoutLogs.loggedDate, weekStartDate),
+            lte(workoutLogs.loggedDate, weekEndDate),
+          ),
+        )
+        .orderBy(asc(workoutLogs.loggedAt)),
+      this.db
+        .select()
+        .from(nutritionLogs)
+        .where(
+          and(
+            eq(nutritionLogs.userId, userId),
+            gte(nutritionLogs.loggedDate, weekStartDate),
+            lte(nutritionLogs.loggedDate, weekEndDate),
+          ),
+        )
+        .orderBy(asc(nutritionLogs.loggedAt)),
+      this.db
+        .select()
+        .from(hydrationLogs)
+        .where(
+          and(
+            eq(hydrationLogs.userId, userId),
+            eq(hydrationLogs.loggedDate, targetDate),
+          ),
+        )
+        .orderBy(asc(hydrationLogs.loggedAt)),
+    ]);
 
     const metricsUpToWeekEnd = metricRowsUpToWeekEnd.map(toBodyMetricDTO);
     let earliestFallbackMetric: BodyMetricDTO | null = metricsUpToWeekEnd[0] ?? null;
@@ -2354,6 +2949,7 @@ export class PostgresHealthRepository implements HealthRepository {
       latestMetric,
       workouts,
       nutritionForDate,
+      hydrationEntries: hydrationRows.map(toHydrationEntryDTO),
       weeklyBudget,
     });
   }
@@ -2432,12 +3028,328 @@ export class PostgresHealthRepository implements HealthRepository {
     return inserted.map(toNutritionLogDTO);
   }
 
+  async updateNutritionLog(
+    userId: string,
+    id: string,
+    input: UpdateNutritionLogInput,
+  ): Promise<NutritionLogDTO | null> {
+    const [updated] = await this.db
+      .update(nutritionLogs)
+      .set({
+        itemName: input.itemName,
+        mealType: input.mealType,
+        calories: input.calories,
+        proteinG: input.proteinG,
+        carbsG: input.carbsG,
+        fatG: input.fatG,
+      })
+      .where(
+        and(
+          eq(nutritionLogs.id, id),
+          eq(nutritionLogs.userId, userId),
+          ne(nutritionLogs.mealType, 'supplement'),
+        ),
+      )
+      .returning();
+
+    return updated ? toNutritionLogDTO(updated) : null;
+  }
+
   async deleteNutritionLog(userId: string, id: string): Promise<boolean> {
     const deleted = await this.db
       .delete(nutritionLogs)
       .where(and(eq(nutritionLogs.id, id), eq(nutritionLogs.userId, userId)))
       .returning({ id: nutritionLogs.id });
     return deleted.length > 0;
+  }
+
+  async listSavedAndRecentMeals(
+    userId: string,
+    todayDate?: string,
+  ): Promise<SavedMealsListResponse> {
+    await this.ensurePhase8Schema();
+    const resolvedToday = todayDate ?? getBangkokDateString();
+    const windowStart = shiftDateString(resolvedToday, -13);
+
+    const [savedRows, recentRows] = await Promise.all([
+      this.db
+        .select()
+        .from(savedMeals)
+        .where(eq(savedMeals.userId, userId))
+        .orderBy(
+          desc(savedMeals.usageCount),
+          sql`${savedMeals.lastUsedAt} DESC NULLS LAST`,
+          desc(savedMeals.createdAt),
+        ),
+      this.db
+        .select()
+        .from(nutritionLogs)
+        .where(
+          and(
+            eq(nutritionLogs.userId, userId),
+            ne(nutritionLogs.mealType, 'supplement'),
+            gte(nutritionLogs.loggedDate, windowStart),
+            lte(nutritionLogs.loggedDate, resolvedToday),
+          ),
+        )
+        .orderBy(asc(nutritionLogs.loggedAt)),
+    ]);
+
+    return {
+      savedMeals: savedRows.map(toSavedMealDTO),
+      recentMeals: buildRecentMealSuggestions(
+        recentRows.map(toNutritionLogDTO),
+        resolvedToday,
+      ),
+    };
+  }
+
+  async createSavedMeal(
+    userId: string,
+    input: CreateSavedMealInput,
+  ): Promise<SavedMealDTO> {
+    await this.ensurePhase8Schema();
+    await this.requireProfileRow(userId);
+    const servingNote = input.servingNote?.trim() ? input.servingNote.trim() : null;
+    const [inserted] = await this.db
+      .insert(savedMeals)
+      .values({
+        id: `saved-meal-${crypto.randomUUID()}`,
+        userId,
+        name: input.name,
+        defaultMealType: input.defaultMealType,
+        calories: input.calories,
+        proteinG: input.proteinG,
+        carbsG: input.carbsG,
+        fatG: input.fatG,
+        servingNote,
+        usageCount: 0,
+      })
+      .returning();
+
+    return toSavedMealDTO(inserted);
+  }
+
+  async deleteSavedMeal(userId: string, id: string): Promise<boolean> {
+    await this.ensurePhase8Schema();
+    const deleted = await this.db
+      .delete(savedMeals)
+      .where(and(eq(savedMeals.id, id), eq(savedMeals.userId, userId)))
+      .returning({ id: savedMeals.id });
+    return deleted.length > 0;
+  }
+
+  async logSavedMeal(
+    userId: string,
+    savedMealId: string,
+    input: Partial<LogSavedMealInput>,
+  ): Promise<LogSavedMealResponse | null> {
+    await this.ensurePhase8Schema();
+    const multiplier = input.multiplier ?? 1;
+    const loggedDate = input.loggedDate ?? getBangkokDateString();
+    const now = new Date();
+
+    return this.db.transaction(async (tx) => {
+      const [savedRow] = await tx
+        .select()
+        .from(savedMeals)
+        .where(and(eq(savedMeals.id, savedMealId), eq(savedMeals.userId, userId)))
+        .limit(1);
+
+      if (!savedRow) {
+        return null;
+      }
+
+      const mealType = input.mealType ?? savedRow.defaultMealType;
+      const [insertedMeal] = await tx
+        .insert(nutritionLogs)
+        .values({
+          id: `nutrition-${crypto.randomUUID()}`,
+          userId,
+          loggedDate,
+          mealType,
+          itemName: savedRow.name,
+          calories: Math.round(savedRow.calories * multiplier),
+          proteinG: roundTo(savedRow.proteinG * multiplier, 1),
+          carbsG: roundTo(savedRow.carbsG * multiplier, 1),
+          fatG: roundTo(savedRow.fatG * multiplier, 1),
+          supplementKey: null,
+          source: 'MANUAL',
+          loggedAt: now,
+        })
+        .returning();
+
+      const [updatedSaved] = await tx
+        .update(savedMeals)
+        .set({
+          usageCount: sql`${savedMeals.usageCount} + 1`,
+          lastUsedAt: now,
+        })
+        .where(and(eq(savedMeals.id, savedMealId), eq(savedMeals.userId, userId)))
+        .returning();
+
+      return {
+        meal: toNutritionLogDTO(insertedMeal),
+        savedMeal: toSavedMealDTO(updatedSaved),
+      };
+    });
+  }
+
+  async copyYesterdayMeals(
+    userId: string,
+    input: CopyYesterdayMealsInput,
+  ): Promise<CopyYesterdayMealsResponse> {
+    await this.ensurePhase8Schema();
+    await this.requireProfileRow(userId);
+    const targetDate = input.targetDate ?? getBangkokDateString();
+    const sourceDate = input.sourceDate ?? shiftDateString(targetDate, -1);
+
+    if (input.mealTypes && input.mealTypes.length === 0) {
+      return {
+        copiedCount: 0,
+        sourceDate,
+        targetDate,
+        items: [],
+      };
+    }
+
+    const conditions = [
+      eq(nutritionLogs.userId, userId),
+      eq(nutritionLogs.loggedDate, sourceDate),
+      ne(nutritionLogs.mealType, 'supplement'),
+    ];
+    if (input.mealTypes && input.mealTypes.length > 0) {
+      conditions.push(inArray(nutritionLogs.mealType, input.mealTypes));
+    }
+
+    const inserted = await this.db.transaction(async (tx) => {
+      const sourceRows = await tx
+        .select()
+        .from(nutritionLogs)
+        .where(and(...conditions))
+        .orderBy(asc(nutritionLogs.loggedAt));
+
+      if (sourceRows.length === 0) {
+        return [];
+      }
+
+      const baseTimeMs = Date.now();
+      return tx
+        .insert(nutritionLogs)
+        .values(
+          sourceRows.map((src, idx) => ({
+            id: `nutrition-${crypto.randomUUID()}`,
+            userId,
+            loggedDate: targetDate,
+            mealType: src.mealType,
+            itemName: src.itemName,
+            calories: src.calories,
+            proteinG: src.proteinG,
+            carbsG: src.carbsG,
+            fatG: src.fatG,
+            supplementKey: null,
+            source: 'MANUAL' as const,
+            loggedAt: new Date(baseTimeMs + idx),
+          })),
+        )
+        .returning();
+    });
+
+    return {
+      copiedCount: inserted.length,
+      sourceDate,
+      targetDate,
+      items: inserted.map(toNutritionLogDTO),
+    };
+  }
+
+  async getHydrationSummary(userId: string, date?: string): Promise<WaterLogSummaryDTO> {
+    await Promise.all([this.ensurePhase6Schema(), this.ensurePhase8Schema()]);
+    const targetDate = date ?? getBangkokDateString();
+    const profileRow = await this.requireProfileRow(userId);
+    const profile = toProfileDTO(profileRow);
+
+    const [priorMetricRows, dayWorkouts, dayHydration] = await Promise.all([
+      this.db
+        .select()
+        .from(bodyMetrics)
+        .where(
+          and(eq(bodyMetrics.userId, userId), lte(bodyMetrics.recordedDate, targetDate)),
+        )
+        .orderBy(desc(bodyMetrics.recordedDate), desc(bodyMetrics.createdAt))
+        .limit(1),
+      this.db
+        .select()
+        .from(workoutLogs)
+        .where(
+          and(eq(workoutLogs.userId, userId), eq(workoutLogs.loggedDate, targetDate)),
+        ),
+      this.db
+        .select()
+        .from(hydrationLogs)
+        .where(
+          and(eq(hydrationLogs.userId, userId), eq(hydrationLogs.loggedDate, targetDate)),
+        )
+        .orderBy(asc(hydrationLogs.loggedAt)),
+    ]);
+
+    let weightKg = priorMetricRows[0]?.weightKg;
+    if (weightKg === undefined) {
+      const [anyMetric] = await this.db
+        .select({ weightKg: bodyMetrics.weightKg })
+        .from(bodyMetrics)
+        .where(eq(bodyMetrics.userId, userId))
+        .orderBy(desc(bodyMetrics.recordedDate), desc(bodyMetrics.createdAt))
+        .limit(1);
+      weightKg = anyMetric?.weightKg ?? DEFAULT_FALLBACK_WEIGHT_KG;
+    }
+
+    const activeCalories = Math.round(
+      dayWorkouts.reduce((sum, w) => sum + w.activeCalories, 0),
+    );
+
+    return buildWaterLogSummary({
+      date: targetDate,
+      weightKg,
+      activeCalories,
+      supplementStack: profile.supplementStack,
+      entries: dayHydration.map(toHydrationEntryDTO),
+    });
+  }
+
+  async addWaterLog(
+    userId: string,
+    input: AddWaterLogInput,
+  ): Promise<WaterLogSummaryDTO> {
+    await this.ensurePhase8Schema();
+    await this.requireProfileRow(userId);
+    const loggedDate = input.loggedDate ?? getBangkokDateString();
+
+    await this.db.insert(hydrationLogs).values({
+      id: `hydration-${crypto.randomUUID()}`,
+      userId,
+      loggedDate,
+      amountMl: input.amountMl,
+    });
+
+    return this.getHydrationSummary(userId, loggedDate);
+  }
+
+  async deleteWaterLog(
+    userId: string,
+    id: string,
+  ): Promise<WaterLogSummaryDTO | null> {
+    await this.ensurePhase8Schema();
+    const [deleted] = await this.db
+      .delete(hydrationLogs)
+      .where(and(eq(hydrationLogs.id, id), eq(hydrationLogs.userId, userId)))
+      .returning({ loggedDate: hydrationLogs.loggedDate });
+
+    if (!deleted) {
+      return null;
+    }
+
+    return this.getHydrationSummary(userId, deleted.loggedDate);
   }
 
   async createWorkoutLog(
@@ -2800,7 +3712,7 @@ export class PostgresHealthRepository implements HealthRepository {
     email?: string | null,
     date?: string,
   ): Promise<DashboardBootstrapResponse> {
-    await this.ensurePhase6Schema();
+    await Promise.all([this.ensurePhase6Schema(), this.ensurePhase8Schema()]);
     const targetDate = date ?? getLocalDateString();
     const { weekStartDate, weekEndDate } = getWeekBounds(targetDate);
 
@@ -2810,6 +3722,7 @@ export class PostgresHealthRepository implements HealthRepository {
       metricRows,
       workoutRows,
       nutritionRows,
+      hydrationRows,
       [latestSyncRow],
     ] = await Promise.all([
       this.findProfileRow(userId),
@@ -2846,6 +3759,16 @@ export class PostgresHealthRepository implements HealthRepository {
           ),
         )
         .orderBy(asc(nutritionLogs.loggedAt)),
+      this.db
+        .select()
+        .from(hydrationLogs)
+        .where(
+          and(
+            eq(hydrationLogs.userId, userId),
+            eq(hydrationLogs.loggedDate, targetDate),
+          ),
+        )
+        .orderBy(asc(hydrationLogs.loggedAt)),
       this.db
         .select()
         .from(syncLogs)
@@ -2915,6 +3838,7 @@ export class PostgresHealthRepository implements HealthRepository {
       latestMetric,
       workouts,
       nutritionForDate,
+      hydrationEntries: hydrationRows.map(toHydrationEntryDTO),
       weeklyBudget,
     });
 
@@ -2927,11 +3851,11 @@ export class PostgresHealthRepository implements HealthRepository {
     userId: string,
     month?: string,
   ): Promise<MonthlyCalendarResponse> {
-    await this.ensurePhase6Schema();
+    await Promise.all([this.ensurePhase6Schema(), this.ensurePhase8Schema()]);
     const { resolvedMonth, daysInMonth, monthStart, monthEnd, today } =
       getMonthBounds(month);
 
-    const [{ profile, goal }, metricRows, workoutRows, nutritionRows] =
+    const [{ profile, goal }, metricRows, workoutRows, nutritionRows, hydrationRows] =
       await Promise.all([
         this.getProfileAndGoal(userId),
         this.db
@@ -2961,6 +3885,19 @@ export class PostgresHealthRepository implements HealthRepository {
               lte(nutritionLogs.loggedDate, monthEnd),
             ),
           ),
+        this.db
+          .select({
+            loggedDate: hydrationLogs.loggedDate,
+            amountMl: hydrationLogs.amountMl,
+          })
+          .from(hydrationLogs)
+          .where(
+            and(
+              eq(hydrationLogs.userId, userId),
+              gte(hydrationLogs.loggedDate, monthStart),
+              lte(hydrationLogs.loggedDate, monthEnd),
+            ),
+          ),
       ]);
 
     const metricsUpToMonthEnd = metricRows.map(toBodyMetricDTO);
@@ -2986,6 +3923,7 @@ export class PostgresHealthRepository implements HealthRepository {
       earliestFallbackMetric,
       workoutsInMonth: workoutRows.map(toWorkoutLogDTO),
       nutritionInMonth: nutritionRows.map(toNutritionLogDTO),
+      hydrationInMonth: hydrationRows,
     });
   }
 

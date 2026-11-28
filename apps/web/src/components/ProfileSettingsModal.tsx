@@ -633,7 +633,7 @@ export function ProfileSettingsModal({
                 <input
                   type="number"
                   inputMode="decimal"
-                  step="0.5"
+                  step="any"
                   min={80}
                   max={260}
                   required
@@ -708,7 +708,7 @@ export function ProfileSettingsModal({
                 <input
                   type="number"
                   inputMode="decimal"
-                  step="0.01"
+                  step="any"
                   min={1.0}
                   max={2.2}
                   aria-label="Custom activity multiplier"
@@ -779,7 +779,7 @@ export function ProfileSettingsModal({
               <input
                 type="number"
                 inputMode="numeric"
-                step="25"
+                step="1"
                 min={-1500}
                 max={1500}
                 required
@@ -814,7 +814,7 @@ export function ProfileSettingsModal({
                 <input
                   type="number"
                   inputMode="decimal"
-                  step="0.1"
+                  step="any"
                   min={0.8}
                   max={3.5}
                   required
@@ -841,10 +841,10 @@ export function ProfileSettingsModal({
                 <div className="mt-2 flex min-w-0 items-center gap-2">
                   <input
                     type="number"
-                    inputMode="numeric"
+                    inputMode="decimal"
                     min={15}
                     max={50}
-                    step={1}
+                    step="any"
                     required
                     value={fatRatioPct}
                     onChange={(e) => setFatRatioPct(e.target.value)}
@@ -966,7 +966,7 @@ export function ProfileSettingsModal({
                           inputMode="numeric"
                           min={-500}
                           max={800}
-                          step={25}
+                          step={1}
                           value={trainingDayOffset}
                           onChange={(e) => setTrainingDayOffset(e.target.value)}
                           className={`mt-1 tabular-nums ${inputClasses}`}
@@ -982,7 +982,7 @@ export function ProfileSettingsModal({
                           inputMode="numeric"
                           min={-800}
                           max={500}
-                          step={25}
+                          step={1}
                           value={restDayOffset}
                           onChange={(e) => setRestDayOffset(e.target.value)}
                           className={`mt-1 tabular-nums ${inputClasses}`}
@@ -1051,7 +1051,7 @@ export function ProfileSettingsModal({
                             inputMode="numeric"
                             min={-800}
                             max={800}
-                            step={25}
+                            step={1}
                             aria-label={`${label} calorie offset`}
                             value={dayOffsets[key]}
                             onChange={(e) =>

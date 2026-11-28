@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import type {
   SupplementStatusDTO,
+  WaterLogSummaryDTO,
   WorkoutCategory,
   WorkoutIntensity,
   WorkoutLogDTO,
@@ -7,6 +9,9 @@ import type {
 import {
   Activity,
   Check,
+  ChevronDown,
+  ChevronUp,
+  Droplets,
   Dumbbell,
   Flame,
   Footprints,
@@ -17,6 +22,7 @@ import {
   Sparkles,
   Trash2,
   Trophy,
+  X,
   Zap,
 } from 'lucide-react';
 import { BentoCard } from './BentoCard';
@@ -30,6 +36,10 @@ export interface ActivitySupplementCardProps {
   onDeleteWorkout?: (id: string) => void | Promise<void>;
   onAddWorkoutClick?: () => void;
   onManageSupplementsClick?: () => void;
+  hydration?: WaterLogSummaryDTO;
+  onAddWater?: (amountMl: number) => void | Promise<void>;
+  onDeleteWater?: (id: string) => void | Promise<void>;
+  isHydrationBusy?: boolean;
 }
 
 const CATEGORY_ICONS: Record<WorkoutCategory, typeof Dumbbell> = {
@@ -46,6 +56,16 @@ const INTENSITY_STYLES: Record<WorkoutIntensity, string> = {
   high: 'border-[#FF5C6C]/25 bg-[#FF5C6C]/10 text-[#FF5C6C]',
 };
 
+const WATER_QUICK_PRESETS = [250, 500, 750] as const;
+
+function formatHydrationTime(isoString: string): string {
+  const parsed = new Date(isoString);
+  if (Number.isNaN(parsed.getTime())) {
+    return '';
+  }
+  return parsed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
 export function ActivitySupplementCard({
   workouts,
   supplements,
@@ -55,8 +75,32 @@ export function ActivitySupplementCard({
   onDeleteWorkout,
   onAddWorkoutClick,
   onManageSupplementsClick,
+  hydration,
+  onAddWater,
+  onDeleteWater,
+  isHydrationBusy = false,
 }: ActivitySupplementCardProps) {
   const takenCount = supplements.filter((s) => s.taken).length;
+  const [showAllWaterLogs, setShowAllWaterLogs] = useState(false);
+
+  const showHydration = hydration !== undefined || onAddWater !== undefined;
+  const consumedMl = hydration?.consumedMl ?? 0;
+  const targetMl = hydration?.targetMl ?? 0;
+  const percentage = hydration?.percentage ?? 0;
+  const waterEntries = hydration?.entries ?? [];
+  const visibleEntries = showAllWaterLogs ? waterEntries : waterEntries.slice(0, 4);
+  const goalReached = targetMl > 0 && consumedMl >= targetMl;
+
+  const breakdownParts: string[] = [];
+  if (hydration) {
+    breakdownParts.push(`Base ${hydration.breakdown.baseMl.toLocaleString()}ml`);
+    if (hydration.breakdown.workoutBonusMl > 0) {
+      breakdownParts.push(`Workout +${hydration.breakdown.workoutBonusMl}ml`);
+    }
+    if (hydration.breakdown.creatineBonusMl > 0) {
+      breakdownParts.push(`Creatine +${hydration.breakdown.creatineBonusMl}ml`);
+    }
+  }
 
   return (
     <BentoCard
@@ -240,6 +284,146 @@ export function ActivitySupplementCard({
             </div>
           )}
         </div>
+
+        {/* Hydration / Water Tracker */}
+        {showHydration ? (
+          <div className="min-w-0 border-t border-white/5 pt-4">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-1.5">
+                <Droplets className="h-3.5 w-3.5 shrink-0 text-[#38BDF8]" />
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  Hydration
+                </h3>
+              </div>
+
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <span className="tabular-nums text-xs font-semibold text-white">
+                  {consumedMl.toLocaleString()} ml{' '}
+                  <span className="font-normal text-slate-400">
+                    / Target {targetMl > 0 ? `${targetMl.toLocaleString()} ml` : '—'}
+                  </span>
+                </span>
+                {targetMl > 0 ? (
+                  <span
+                    className={`tabular-nums rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                      goalReached
+                        ? 'border-[#2EE6A6]/35 bg-[#2EE6A6]/12 text-[#2EE6A6]'
+                        : 'border-[#38BDF8]/30 bg-[#38BDF8]/10 text-[#38BDF8]'
+                    }`}
+                  >
+                    {percentage}%
+                  </span>
+                ) : null}
+              </div>
+            </div>
+
+            {/* Progress bar */}
+            <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${
+                  goalReached
+                    ? 'bg-[#2EE6A6]'
+                    : 'bg-gradient-to-r from-[#38BDF8] to-[#2EE6A6]'
+                }`}
+                style={{ width: `${Math.min(100, Math.max(0, percentage))}%` }}
+              />
+            </div>
+
+            {/* Target breakdown hint */}
+            {hydration ? (
+              <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[11px] text-slate-400">
+                <span className="min-w-0 break-words tabular-nums">
+                  {breakdownParts.join(' + ')}
+                </span>
+                <span className="tabular-nums shrink-0 text-slate-400">
+                  {goalReached
+                    ? 'Daily target reached'
+                    : `${hydration.remainingMl.toLocaleString()} ml left`}
+                </span>
+              </div>
+            ) : null}
+
+            {/* Quick 1-tap add water presets */}
+            {onAddWater ? (
+              <div className="mt-3 flex min-w-0 flex-wrap gap-2">
+                {WATER_QUICK_PRESETS.map((amountMl) => (
+                  <button
+                    key={amountMl}
+                    type="button"
+                    disabled={isHydrationBusy}
+                    onClick={() => void onAddWater(amountMl)}
+                    className="inline-flex min-h-[40px] min-w-[84px] flex-1 items-center justify-center gap-1 rounded-2xl border border-[#38BDF8]/25 bg-[#38BDF8]/10 px-3 py-1.5 text-xs font-semibold text-[#38BDF8] tabular-nums transition hover:border-[#38BDF8]/50 hover:bg-[#38BDF8]/20 disabled:cursor-wait disabled:opacity-60"
+                  >
+                    {isHydrationBusy ? (
+                      <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+                    ) : (
+                      <Plus className="h-3 w-3 shrink-0" />
+                    )}
+                    <span>+{amountMl} ml</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
+            {/* Compact recent water chips */}
+            {waterEntries.length > 0 ? (
+              <div className="mt-2.5 min-w-0">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {visibleEntries.map((entry) => {
+                    const timeStr = formatHydrationTime(entry.loggedAt);
+                    return (
+                      <span
+                        key={entry.id}
+                        className="inline-flex max-w-full items-center gap-1 rounded-full border border-white/10 bg-[#0F131C]/80 py-1 pr-1 pl-2.5 text-[11px] text-slate-300"
+                      >
+                        <span className="tabular-nums font-medium text-[#38BDF8]">
+                          +{entry.amountMl} ml
+                        </span>
+                        {timeStr ? (
+                          <span className="tabular-nums text-[10px] text-slate-500">
+                            {timeStr}
+                          </span>
+                        ) : null}
+                        {onDeleteWater ? (
+                          <button
+                            type="button"
+                            disabled={isHydrationBusy}
+                            onClick={() => void onDeleteWater(entry.id)}
+                            aria-label={`Remove ${entry.amountMl} ml water entry`}
+                            title="Undo water entry"
+                            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-[#FF5C6C]/15 hover:text-[#FF5C6C] disabled:opacity-50"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        ) : null}
+                      </span>
+                    );
+                  })}
+
+                  {waterEntries.length > 4 ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllWaterLogs((prev) => !prev)}
+                      className="inline-flex min-h-[28px] items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-0.5 text-[11px] font-medium text-slate-300 transition hover:border-white/20 hover:text-white"
+                    >
+                      {showAllWaterLogs ? (
+                        <>
+                          <span>Less</span>
+                          <ChevronUp className="h-3 w-3" />
+                        </>
+                      ) : (
+                        <>
+                          <span>+{waterEntries.length - 4} more</span>
+                          <ChevronDown className="h-3 w-3" />
+                        </>
+                      )}
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </BentoCard>
   );

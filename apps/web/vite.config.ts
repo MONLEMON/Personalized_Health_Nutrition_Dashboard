@@ -8,11 +8,32 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
-          'vendor-react': ['react', 'react-dom'],
-          'vendor-recharts': ['recharts'],
-          'vendor-supabase': ['@supabase/supabase-js'],
-          'vendor-icons': ['lucide-react'],
+        manualChunks(id: string) {
+          const normalizedId = id.replace(/\\/g, '/');
+          if (
+            normalizedId.includes('node_modules/react/') ||
+            normalizedId.includes('node_modules/react-dom/') ||
+            normalizedId.includes('node_modules/scheduler/')
+          ) {
+            return 'vendor-react';
+          }
+          if (
+            normalizedId.includes('node_modules/recharts') ||
+            normalizedId.includes('node_modules/d3-') ||
+            normalizedId.includes('node_modules/victory-vendor')
+          ) {
+            return 'vendor-recharts';
+          }
+          if (normalizedId.includes('node_modules/@supabase')) {
+            return 'vendor-supabase';
+          }
+          if (normalizedId.includes('node_modules/lucide-react')) {
+            return 'vendor-icons';
+          }
+          if (normalizedId.includes('node_modules/zod')) {
+            return 'vendor-zod';
+          }
+          return undefined;
         },
       },
     },

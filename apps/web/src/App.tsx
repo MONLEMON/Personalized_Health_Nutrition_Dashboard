@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState, type FormEvent } from 'react';
 import {
   createBodyMetricSchema,
   type GoalType,
+  type NutritionLogDTO,
   type SupplementConfig,
   type UpdateProfileSettingsInput,
 } from '@health-dash/shared';
@@ -17,32 +18,76 @@ import {
   Target,
   X,
 } from 'lucide-react';
-import {
-  ActivitySupplementCard,
-  AppleHealthSyncPill,
-  AppleShortcutsCard,
-  HeroStatusCard,
-  MacroRingsCard,
-  MobileBottomNav,
-  MonthlyCalendarCard,
-  ProfileSettingsModal,
-  ProfileSummaryCard,
-  QuickLogFab,
-  QuickLogModal,
-  SupplementManagerModal,
-  TodayLogsCard,
-  WeeklyCoachCard,
-  type MobileTab,
-  type QuickLogTab,
-} from './components';
+import { ActivitySupplementCard } from './components/ActivitySupplementCard';
+import { AppleHealthSyncPill } from './components/AppleHealthSyncPill';
+import type { TrendTimeframeDays } from './components/BodyRecompChart';
+import { HeroStatusCard } from './components/HeroStatusCard';
+import { MacroRingsCard } from './components/MacroRingsCard';
+import { MobileBottomNav, type MobileTab } from './components/MobileBottomNav';
+import { QuickLogFab } from './components/QuickLogFab';
+import type { QuickLogTab } from './components/QuickLogModal';
+import { TodayLogsCard } from './components/TodayLogsCard';
+import { useAuth } from './contexts/AuthContext';
+import { useDashboard } from './hooks/useDashboard';
+
 const BodyRecompChart = lazy(() =>
   import('./components/BodyRecompChart').then((mod) => ({
     default: mod.BodyRecompChart,
   })),
 );
-import type { TrendTimeframeDays } from './components/BodyRecompChart';
-import { useAuth } from './contexts/AuthContext';
-import { useDashboard } from './hooks/useDashboard';
+const QuickLogModal = lazy(() =>
+  import('./components/QuickLogModal').then((mod) => ({
+    default: mod.QuickLogModal,
+  })),
+);
+const ProfileSettingsModal = lazy(() =>
+  import('./components/ProfileSettingsModal').then((mod) => ({
+    default: mod.ProfileSettingsModal,
+  })),
+);
+const SupplementManagerModal = lazy(() =>
+  import('./components/SupplementManagerModal').then((mod) => ({
+    default: mod.SupplementManagerModal,
+  })),
+);
+const MonthlyCalendarCard = lazy(() =>
+  import('./components/MonthlyCalendarCard').then((mod) => ({
+    default: mod.MonthlyCalendarCard,
+  })),
+);
+const WeeklyCoachCard = lazy(() =>
+  import('./components/WeeklyCoachCard').then((mod) => ({
+    default: mod.WeeklyCoachCard,
+  })),
+);
+const AppleShortcutsCard = lazy(() =>
+  import('./components/AppleShortcutsCard').then((mod) => ({
+    default: mod.AppleShortcutsCard,
+  })),
+);
+const ProfileSummaryCard = lazy(() =>
+  import('./components/ProfileSummaryCard').then((mod) => ({
+    default: mod.ProfileSummaryCard,
+  })),
+);
+
+function CardSkeleton({ className = 'h-72' }: { className?: string }) {
+  return (
+    <div
+      aria-hidden="true"
+      className={`w-full min-w-0 animate-pulse rounded-3xl border border-white/10 bg-[#141821]/80 p-5 ${className}`}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="h-5 w-40 rounded-lg bg-white/10" />
+        <div className="h-6 w-20 rounded-full bg-white/10" />
+      </div>
+      <div className="mt-4 space-y-2.5">
+        <div className="h-4 w-3/4 rounded-lg bg-white/[0.06]" />
+        <div className="h-4 w-1/2 rounded-lg bg-white/[0.06]" />
+      </div>
+    </div>
+  );
+}
 
 function formatDisplayDate(isoDate: string): string {
   const parts = isoDate.split('-');
@@ -183,7 +228,7 @@ function WeighInModal({
               <input
                 type="number"
                 inputMode="decimal"
-                step="0.1"
+                step="any"
                 required
                 value={weightKg}
                 onChange={(e) => setWeightKg(e.target.value)}
@@ -197,7 +242,7 @@ function WeighInModal({
               <input
                 type="number"
                 inputMode="decimal"
-                step="0.1"
+                step="any"
                 value={bodyFatPct}
                 onChange={(e) => setBodyFatPct(e.target.value)}
                 placeholder="16.5"
@@ -211,7 +256,7 @@ function WeighInModal({
               <input
                 type="number"
                 inputMode="decimal"
-                step="0.1"
+                step="any"
                 value={muscleKg}
                 onChange={(e) => setMuscleKg(e.target.value)}
                 placeholder="35.6"
@@ -276,9 +321,14 @@ export function App() {
     isDemoFallback,
     togglingSupplementKey,
     submittingLog,
+    isHydrationBusy,
+    savedMeals,
+    recentMeals,
+    isSavedMealsLoading,
     refresh,
     toggleSupplement,
     logMeal,
+    updateMeal,
     logMealsBatch,
     removeMeal,
     logWorkout,
@@ -286,10 +336,18 @@ export function App() {
     logBodyMetric,
     saveSupplementStack,
     saveProfileSettings,
+    fetchSavedMeals,
+    createSavedMeal,
+    deleteSavedMeal,
+    logSavedMeal,
+    copyYesterdayMeals,
+    addWater,
+    deleteWater,
   } = useDashboard();
 
   const [quickLogOpen, setQuickLogOpen] = useState(false);
   const [quickLogTab, setQuickLogTab] = useState<QuickLogTab>('ai');
+  const [editingMeal, setEditingMeal] = useState<NutritionLogDTO | null>(null);
   const [weighInOpen, setWeighInOpen] = useState(false);
   const [shortcutsModalOpen, setShortcutsModalOpen] = useState(false);
   const [supplementManagerOpen, setSupplementManagerOpen] = useState(false);
@@ -311,8 +369,20 @@ export function App() {
   }, [shortcutsModalOpen]);
 
   const openQuickLog = (tab: QuickLogTab) => {
+    setEditingMeal(null);
     setQuickLogTab(tab);
     setQuickLogOpen(true);
+  };
+
+  const openEditMeal = (meal: NutritionLogDTO) => {
+    setEditingMeal(meal);
+    setQuickLogTab('meal');
+    setQuickLogOpen(true);
+  };
+
+  const closeQuickLog = () => {
+    setQuickLogOpen(false);
+    setEditingMeal(null);
   };
 
   const handleSelectMobileTab = (tab: MobileTab) => {
@@ -553,6 +623,16 @@ export function App() {
               }}
               onAddWorkoutClick={() => openQuickLog('workout')}
               onManageSupplementsClick={() => setSupplementManagerOpen(true)}
+              hydration={dashboard.hydration}
+              onAddWater={async (amountMl) => {
+                await addWater(amountMl);
+                bumpCalendar();
+              }}
+              onDeleteWater={async (id) => {
+                await deleteWater(id);
+                bumpCalendar();
+              }}
+              isHydrationBusy={isHydrationBusy}
             />
           </div>
 
@@ -561,19 +641,21 @@ export function App() {
               mobileTab === 'trends' ? 'block' : 'hidden md:block'
             }`}
           >
-            <WeeklyCoachCard
-              todayDate={dashboard.date}
-              refreshTrigger={calendarRefreshKey}
-              isDemoFallback={isDemoFallback}
-              fallbackGoal={dashboard.goal}
-              fallbackEnergy={dashboard.energy}
-              onTargetApplied={async () => {
-                if (!isDemoFallback) {
-                  await refresh();
-                }
-                bumpCalendar();
-              }}
-            />
+            <Suspense fallback={<CardSkeleton className="h-56" />}>
+              <WeeklyCoachCard
+                todayDate={dashboard.date}
+                refreshTrigger={calendarRefreshKey}
+                isDemoFallback={isDemoFallback}
+                fallbackGoal={dashboard.goal}
+                fallbackEnergy={dashboard.energy}
+                onTargetApplied={async () => {
+                  if (!isDemoFallback) {
+                    await refresh();
+                  }
+                  bumpCalendar();
+                }}
+              />
+            </Suspense>
           </div>
 
           <div
@@ -581,11 +663,7 @@ export function App() {
               mobileTab === 'trends' ? 'block' : 'hidden md:block'
             }`}
           >
-            <Suspense
-              fallback={
-                <div className="h-[380px] animate-pulse rounded-3xl border border-white/5 bg-[#141720]" />
-              }
-            >
+            <Suspense fallback={<CardSkeleton className="h-[380px]" />}>
               <BodyRecompChart
                 trends={trends}
                 days={trendDays}
@@ -607,6 +685,24 @@ export function App() {
                 await removeMeal(id);
                 bumpCalendar();
               }}
+              onEditMeal={openEditMeal}
+              onSaveAsFavorite={async (meal) => {
+                await createSavedMeal({
+                  name: meal.itemName,
+                  defaultMealType: meal.mealType === 'supplement' ? 'snack' : meal.mealType,
+                  calories: meal.calories,
+                  proteinG: meal.proteinG,
+                  carbsG: meal.carbsG,
+                  fatG: meal.fatG,
+                });
+              }}
+              onCopyYesterday={async () => {
+                const res = await copyYesterdayMeals();
+                if (res.copiedCount > 0) {
+                  bumpCalendar();
+                }
+                return res;
+              }}
               onAddMealClick={() => openQuickLog('ai')}
             />
           </div>
@@ -616,12 +712,14 @@ export function App() {
               mobileTab === 'calendar' ? 'block' : 'hidden md:block'
             }`}
           >
-            <MonthlyCalendarCard
-              todayDate={dashboard.date}
-              refreshTrigger={calendarRefreshKey}
-              isDemoFallback={isDemoFallback}
-              fallbackDashboard={dashboard}
-            />
+            <Suspense fallback={<CardSkeleton className="h-96" />}>
+              <MonthlyCalendarCard
+                todayDate={dashboard.date}
+                refreshTrigger={calendarRefreshKey}
+                isDemoFallback={isDemoFallback}
+                fallbackDashboard={dashboard}
+              />
+            </Suspense>
           </div>
 
           {/* Mobile Trends Snapshot Footer Card */}
@@ -658,33 +756,35 @@ export function App() {
           {/* Mobile Profile View */}
           {mobileTab === 'profile' ? (
             <div className="min-w-0 md:hidden">
-              <ProfileSummaryCard
-                profile={dashboard.profile}
-                goal={dashboard.goal}
-                energy={dashboard.energy}
-                latestMetric={dashboard.latestMetric}
-                storageMode={dashboard.storageMode}
-                isDemoFallback={isDemoFallback}
-                loading={loading}
-                onLogMetricClick={() => setWeighInOpen(true)}
-                onRefresh={() => {
-                  void refresh().then(() => bumpCalendar());
-                }}
-                onEditProfileClick={() => setProfileSettingsOpen(true)}
-                onManageSupplementsClick={() => setSupplementManagerOpen(true)}
-                syncStatus={syncStatus}
-                recordedDate={dashboard.date}
-                onSyncSuccess={async () => {
-                  await refresh();
-                  bumpCalendar();
-                }}
-                userEmail={displayEmail}
-                webhookKeyStatus={me?.webhookKey}
-                onKeyGenerated={async () => {
-                  await refreshMe();
-                }}
-                onSignOut={signOut}
-              />
+              <Suspense fallback={<CardSkeleton className="h-[420px]" />}>
+                <ProfileSummaryCard
+                  profile={dashboard.profile}
+                  goal={dashboard.goal}
+                  energy={dashboard.energy}
+                  latestMetric={dashboard.latestMetric}
+                  storageMode={dashboard.storageMode}
+                  isDemoFallback={isDemoFallback}
+                  loading={loading}
+                  onLogMetricClick={() => setWeighInOpen(true)}
+                  onRefresh={() => {
+                    void refresh().then(() => bumpCalendar());
+                  }}
+                  onEditProfileClick={() => setProfileSettingsOpen(true)}
+                  onManageSupplementsClick={() => setSupplementManagerOpen(true)}
+                  syncStatus={syncStatus}
+                  recordedDate={dashboard.date}
+                  onSyncSuccess={async () => {
+                    await refresh();
+                    bumpCalendar();
+                  }}
+                  userEmail={displayEmail}
+                  webhookKeyStatus={me?.webhookKey}
+                  onKeyGenerated={async () => {
+                    await refreshMe();
+                  }}
+                  onSignOut={signOut}
+                />
+              </Suspense>
             </div>
           ) : null}
         </main>
@@ -703,24 +803,50 @@ export function App() {
         onOpenQuickLog={() => openQuickLog('ai')}
       />
 
-      <QuickLogModal
-        isOpen={quickLogOpen}
-        initialTab={quickLogTab}
-        onClose={() => setQuickLogOpen(false)}
-        onSubmitMeal={async (input) => {
-          await logMeal(input);
-          bumpCalendar();
-        }}
-        onSubmitMealsBatch={async (input) => {
-          await logMealsBatch(input);
-          bumpCalendar();
-        }}
-        onSubmitWorkout={async (input) => {
-          await logWorkout(input);
-          bumpCalendar();
-        }}
-        isSubmitting={submittingLog}
-      />
+      {quickLogOpen ? (
+        <Suspense fallback={null}>
+          <QuickLogModal
+            isOpen={quickLogOpen}
+            initialTab={quickLogTab}
+            editingMeal={editingMeal}
+            onClose={closeQuickLog}
+            onSubmitMeal={async (input) => {
+              await logMeal(input);
+              bumpCalendar();
+            }}
+            onUpdateMeal={async (id, input) => {
+              await updateMeal(id, input);
+              bumpCalendar();
+            }}
+            onSubmitMealsBatch={async (input) => {
+              await logMealsBatch(input);
+              bumpCalendar();
+            }}
+            onSubmitWorkout={async (input) => {
+              await logWorkout(input);
+              bumpCalendar();
+            }}
+            savedMeals={savedMeals}
+            recentMeals={recentMeals}
+            isSavedMealsLoading={isSavedMealsLoading}
+            onLoadSavedMeals={fetchSavedMeals}
+            onCreateSavedMeal={createSavedMeal}
+            onDeleteSavedMeal={deleteSavedMeal}
+            onLogSavedMeal={async (id, input) => {
+              await logSavedMeal(id, input);
+              bumpCalendar();
+            }}
+            onCopyYesterday={async () => {
+              const res = await copyYesterdayMeals();
+              if (res.copiedCount > 0) {
+                bumpCalendar();
+              }
+              return res;
+            }}
+            isSubmitting={submittingLog}
+          />
+        </Suspense>
+      ) : null}
 
       {weighInOpen ? (
         <WeighInModal
@@ -737,30 +863,38 @@ export function App() {
         />
       ) : null}
 
-      <SupplementManagerModal
-        isOpen={supplementManagerOpen}
-        supplements={dashboard.profile.supplementStack}
-        isSubmitting={submittingLog}
-        onClose={() => setSupplementManagerOpen(false)}
-        onSave={async (supplements: SupplementConfig[]) => {
-          await saveSupplementStack(supplements);
-          bumpCalendar();
-        }}
-      />
+      {supplementManagerOpen ? (
+        <Suspense fallback={null}>
+          <SupplementManagerModal
+            isOpen={supplementManagerOpen}
+            supplements={dashboard.profile.supplementStack}
+            isSubmitting={submittingLog}
+            onClose={() => setSupplementManagerOpen(false)}
+            onSave={async (supplements: SupplementConfig[]) => {
+              await saveSupplementStack(supplements);
+              bumpCalendar();
+            }}
+          />
+        </Suspense>
+      ) : null}
 
-      <ProfileSettingsModal
-        isOpen={profileSettingsOpen}
-        profile={dashboard.profile}
-        goal={dashboard.goal}
-        latestMetric={dashboard.latestMetric}
-        activeCalories={dashboard.energy.activeCalories}
-        isSubmitting={submittingLog}
-        onClose={() => setProfileSettingsOpen(false)}
-        onSave={async (input: UpdateProfileSettingsInput) => {
-          await saveProfileSettings(input);
-          bumpCalendar();
-        }}
-      />
+      {profileSettingsOpen ? (
+        <Suspense fallback={null}>
+          <ProfileSettingsModal
+            isOpen={profileSettingsOpen}
+            profile={dashboard.profile}
+            goal={dashboard.goal}
+            latestMetric={dashboard.latestMetric}
+            activeCalories={dashboard.energy.activeCalories}
+            isSubmitting={submittingLog}
+            onClose={() => setProfileSettingsOpen(false)}
+            onSave={async (input: UpdateProfileSettingsInput) => {
+              await saveProfileSettings(input);
+              bumpCalendar();
+            }}
+          />
+        </Suspense>
+      ) : null}
 
       {shortcutsModalOpen ? (
         <div
@@ -775,19 +909,21 @@ export function App() {
           }}
         >
           <div className="animate-sheet-up relative max-h-[92dvh] w-full overflow-x-hidden overflow-y-auto rounded-t-3xl sm:max-w-2xl sm:rounded-3xl">
-            <AppleShortcutsCard
-              syncStatus={syncStatus}
-              webhookKeyStatus={me?.webhookKey}
-              onKeyGenerated={async () => {
-                await refreshMe();
-              }}
-              recordedDate={dashboard.date}
-              onSyncSuccess={async () => {
-                await refresh();
-                bumpCalendar();
-              }}
-              onClose={() => setShortcutsModalOpen(false)}
-            />
+            <Suspense fallback={<CardSkeleton className="h-96" />}>
+              <AppleShortcutsCard
+                syncStatus={syncStatus}
+                webhookKeyStatus={me?.webhookKey}
+                onKeyGenerated={async () => {
+                  await refreshMe();
+                }}
+                recordedDate={dashboard.date}
+                onSyncSuccess={async () => {
+                  await refresh();
+                  bumpCalendar();
+                }}
+                onClose={() => setShortcutsModalOpen(false)}
+              />
+            </Suspense>
           </div>
         </div>
       ) : null}
